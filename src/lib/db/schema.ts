@@ -99,9 +99,13 @@ export const worksheets = pgTable('worksheets', {
   images: jsonb('images').$type<string[]>().notNull(),
   /** Pack every approved item from this batch is filed under. */
   pack: text('pack'),
-  status: text('status', { enum: ['extracting', 'ready', 'failed', 'reviewed'] })
+  status: text('status', {
+    enum: ['uploading', 'extracting', 'verifying', 'ready', 'failed', 'reviewed'],
+  })
     .notNull()
-    .default('extracting'),
+    .default('uploading'),
+  /** How many items were verified and filed automatically. */
+  autoAdded: integer('auto_added').notNull().default(0),
   extracted: jsonb('extracted').$type<ExtractedWord[]>(),
   error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
@@ -120,6 +124,12 @@ export interface ExtractedWord {
   kind: 'word' | 'phrase'
   notes: string | null
   confidence: 'high' | 'medium' | 'low'
+  /** Set by the second pass: does this actually look like real Thai? */
+  verified?: boolean
+  /** Why it was held back, when it was. */
+  issue?: string | null
+  /** True once it has been filed into the deck. */
+  added?: boolean
 }
 
 /**

@@ -64,6 +64,22 @@ export async function listPacks(): Promise<string[]> {
   return [...packs].sort()
 }
 
+export async function updateWord(
+  id: string,
+  patch: { thai: string; ipa: string; english: string; notes: string | null; pack: string | null },
+): Promise<void> {
+  await getDb()
+    .update(schema.words)
+    .set({
+      thai: patch.thai.trim(),
+      ipa: patch.ipa.trim(),
+      english: patch.english.trim(),
+      notes: patch.notes?.trim() || null,
+      pack: patch.pack?.trim() || null,
+    })
+    .where(eq(schema.words.id, id))
+}
+
 export async function deleteWord(id: string): Promise<void> {
   await getDb().delete(schema.words).where(eq(schema.words.id, id))
 }

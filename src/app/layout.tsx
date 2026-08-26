@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Itim, Noto_Sans_Thai, Noto_Serif_Thai, Sarabun } from 'next/font/google'
 
+import Nav from '@/components/Nav'
+
 import './globals.css'
 
 /**
@@ -61,7 +63,10 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       lang="en"
       className={`${sarabun.variable} ${notoSerifThai.variable} ${notoSansThai.variable} ${itim.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Nav />
+        {children}
+      </body>
     </html>
   )
 }

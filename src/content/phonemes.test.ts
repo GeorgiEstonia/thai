@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { CHARACTERS } from './characters'
-import { PRACTICE_ITEMS, SELECTABLE_GROUPS, produceHint, soundIsShared } from './items'
+import {
+  PRACTICE_ITEMS,
+  SELECTABLE_GROUPS,
+  cardKey,
+  parseCardKey,
+  produceHint,
+  soundIsShared,
+} from './items'
 import { PHONEME_BY_CHAR, PHONEME_GROUPS } from './phonemes'
 import { VOWELS, VOWEL_GROUPS } from './vowels'
 
@@ -98,5 +105,28 @@ describe('practice items', () => {
   it('finds the six letters that share /tʰ/', () => {
     const th = PRACTICE_ITEMS.filter((item) => item.type === 'character' && item.ipa === 'tʰ')
     expect(th).toHaveLength(6)
+  })
+})
+
+describe('card keys', () => {
+  it('round-trips every item type — a type it cannot parse never gets saved', () => {
+    for (const type of ['character', 'vowel', 'word'] as const) {
+      for (const direction of ['recognise', 'produce'] as const) {
+        const key = cardKey(type, 'some-id', direction)
+        expect(parseCardKey(key), key).toEqual({ type, id: 'some-id', direction })
+      }
+    }
+  })
+
+  it('round-trips a uuid id, as words actually use', () => {
+    const id = '2f4a1b6c-9d3e-4f21-8a7b-1c2d3e4f5a6b'
+    const key = cardKey('word', id, 'produce')
+    expect(parseCardKey(key)).toEqual({ type: 'word', id, direction: 'produce' })
+  })
+
+  it('rejects nonsense rather than guessing', () => {
+    expect(parseCardKey('nope:x:recognise')).toBeNull()
+    expect(parseCardKey('word:x:sideways')).toBeNull()
+    expect(parseCardKey('word::recognise')).toBeNull()
   })
 })

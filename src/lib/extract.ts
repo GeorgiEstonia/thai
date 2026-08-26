@@ -38,8 +38,59 @@ Rules:
   Otherwise null.
 - confidence: "high" for clean print, "medium" if legible but uncertain, "low"
   if you are partly guessing at the glyphs.
+- Read HANDWRITING as well as print. Lesson pages are annotated by hand, and
+  those notes are usually the most valuable part. If handwriting is genuinely
+  illegible, skip it rather than guessing — but do try.
+- If the page already writes pronunciation in some notation, MATCH THAT
+  NOTATION rather than imposing your own. Only fall back to standard IPA when
+  the page gives no pronunciation at all.
 - Skip page furniture: headings, lesson numbers, exercise instructions, page
   numbers, English-only text.`
+
+const VERIFY_SYSTEM = `You are checking vocabulary that was just read off a photo
+of a Thai lesson page, before it is added to a learner's deck unseen.
+
+For each item decide whether it is safe to add:
+- Is the Thai a real, well-formed Thai word or phrase? Reject OCR damage,
+  broken glyph sequences, and stray characters.
+- Does the gloss plausibly match the Thai?
+- Is the pronunciation consistent with the Thai spelling?
+
+Set verified true only if you would be comfortable with the learner drilling it
+without ever checking it. Otherwise set verified false and put one short plain
+sentence in issue saying what is wrong.
+
+You may correct obvious small errors in ipa, english or notes while verifying;
+do not change thai, and do not add or remove items. Return every item you were
+given, in the same order.`
+
+const VERIFY_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          thai: { type: 'string' },
+          ipa: { type: 'string' },
+          english: { type: 'string' },
+          kind: { type: 'string', enum: ['word', 'phrase'] },
+          notes: { type: ['string', 'null'] },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          verified: { type: 'boolean' },
+          issue: { type: ['string', 'null'] },
+        },
+        required: [
+          'thai', 'ipa', 'english', 'kind', 'notes', 'confidence', 'verified', 'issue',
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['items'],
+  additionalProperties: false,
+} as const
 
 const SCHEMA = {
   type: 'object',
@@ -153,4 +204,60 @@ export async function extractWords(imageDataUrls: string[]): Promise<ExtractedWo
 
   const parsed = JSON.parse(text.text) as { items: ExtractedWord[] }
   return sortForReview(dedupe(parsed.items))
+}
+
+/**
+ * Second pass: a fresh look at the extracted list, so obviously-broken OCR
+ * never reaches the deck.
+ *
+ * This is what makes unattended importing reasonable — you asked not to have to
+ * check every page by hand, so something has to do that job. Items it is happy
+ * with are filed automatically; the rest are held for you.
+ */
+export async function verifyItems(items: ExtractedWord[]): Promise<ExtractedWord[]> {
+  if (items.length === 0) return []
+
+  const client = new Anthropic()
+  const stream = client.messages.stream({
+    model: 'claude-opus-5',
+    max_tokens: 32000,
+    system: VERIFY_SYSTEM,
+    output_config: { format: { type: 'json_schema', schema: VERIFY_SCHEMA } },
+    messages: [
+      {
+        role: 'user',
+        content: JSON.stringify({
+          items: items.map(({ thai, ipa, english, kind, notes, confidence }) => ({
+            thai,
+            ipa,
+            english,
+            kind,
+            notes,
+            confidence,
+          })),
+        }),
+      },
+    ],
+  })
+
+  const response = await stream.finalMessage()
+  if (response.stop_reason === 'refusal') throw new Error('The check was declined.')
+
+  const text = response.content.find((block) => block.type === 'text')
+  if (!text || text.type !== 'text') throw new Error('No content returned')
+
+  const checked = (JSON.parse(text.text) as { items: ExtractedWord[] }).items
+
+  // Never trust the pass to have returned everything — fall back to holding
+  // anything it dropped rather than silently losing it.
+  return items.map((original) => {
+    const match = checked.find((item) => item.thai.trim() === original.thai.trim())
+    if (!match) return { ...original, verified: false, issue: 'Not checked' }
+    return { ...original, ...match, thai: original.thai }
+  })
+}
+
+/** Safe to file without you looking at it. */
+export function isSafeToAdd(item: ExtractedWord): boolean {
+  return item.verified === true && item.confidence !== 'low'
 }

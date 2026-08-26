@@ -30,6 +30,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         status={worksheet.status}
         images={worksheet.images}
         pack={worksheet.pack}
+        autoAdded={worksheet.autoAdded}
         extracted={worksheet.extracted ?? []}
         error={worksheet.error}
       />

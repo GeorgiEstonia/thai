@@ -21,8 +21,10 @@ export default async function CapturePage() {
         </Link>
       </header>
       <p className="mt-2 text-sm text-muted">
-        Photograph whole chapters. Sentences are kept as phrases <em>and</em> broken into
-        every word inside them. Nothing is added until you have checked it.
+        Photograph whole chapters, then close the tab — reading and checking carry on
+        without you. Sentences are kept whole <em>and</em> broken into every word inside
+        them, handwritten notes included. Anything that passes the check is filed
+        automatically; only doubtful items wait for you.
       </p>
 
       <CaptureClient packs={packs} />
@@ -35,12 +37,16 @@ export default async function CapturePage() {
               <li key={sheet.id} className="flex items-center justify-between py-3 text-sm">
                 <span className="text-muted">
                   {sheet.createdAt.toLocaleDateString()} ·{' '}
-                  {sheet.status === 'ready'
-                    ? `${sheet.extracted?.length ?? 0} found`
+                  {sheet.status === 'ready' || sheet.status === 'reviewed'
+                    ? `${sheet.autoAdded} added${
+                        (sheet.extracted?.filter((item) => !item.added).length ?? 0) > 0
+                          ? `, ${sheet.extracted!.filter((item) => !item.added).length} held`
+                          : ''
+                      }`
                     : sheet.status}
                 </span>
                 <Link href={`/capture/${sheet.id}`} className="underline underline-offset-4">
-                  {sheet.status === 'reviewed' ? 'view' : 'review'}
+                  {sheet.status === 'ready' ? 'review' : 'view'}
                 </Link>
               </li>
             ))}

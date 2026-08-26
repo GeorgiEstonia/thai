@@ -127,7 +127,8 @@ export function parseCardKey(
   key: string,
 ): { type: ItemType; id: string; direction: Direction } | null {
   const [type, id, direction] = key.split(':')
-  if ((type !== 'character' && type !== 'vowel') || !id) return null
+  if (type !== 'character' && type !== 'vowel' && type !== 'word') return null
+  if (!id) return null
   if (direction !== 'recognise' && direction !== 'produce') return null
   return { type, id, direction }
 }

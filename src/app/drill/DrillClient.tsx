@@ -57,6 +57,103 @@ const CLASS_STYLES = {
   low: { label: 'low class', text: 'text-class-low', border: 'border-class-low' },
 } as const
 
+/**
+ * What happened this session.
+ *
+ * Every grade was written to the database as it was given, so this screen is a
+ * record of work already saved — ending early loses nothing.
+ */
+function Summary({
+  results,
+  onAgain,
+}: {
+  results: {
+    key: string
+    label: string
+    sub: string
+    direction: Direction
+    grade: Grade
+    interval: number
+  }[]
+  onAgain: () => void
+}) {
+  const right = results.filter((r) => r.grade === 'got').length
+  const wrong = results.length - right
+  const accuracy = results.length > 0 ? Math.round((right / results.length) * 100) : 0
+
+  // Last outcome per card, so a card seen twice shows where it ended up.
+  const final = new Map(results.map((r) => [r.key, r]))
+
+  return (
+    <main className="flex-1 px-5 py-6 max-w-md w-full mx-auto">
+      <h1 className="text-lg font-medium">Session done</h1>
+
+      {results.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">Nothing graded this time.</p>
+      ) : (
+        <>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl border border-edge py-3">
+              <p className="text-2xl text-class-mid">{right}</p>
+              <p className="text-xs text-muted">right</p>
+            </div>
+            <div className="rounded-xl border border-edge py-3">
+              <p className="text-2xl text-class-high">{wrong}</p>
+              <p className="text-xs text-muted">missed</p>
+            </div>
+            <div className="rounded-xl border border-edge py-3">
+              <p className="text-2xl">{accuracy}%</p>
+              <p className="text-xs text-muted">accuracy</p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs text-muted">
+            All of it is saved. &ldquo;Next&rdquo; is when each card comes back.
+          </p>
+
+          <ul className="mt-3 divide-y divide-edge">
+            {[...final.values()].map((row) => (
+              <li key={row.key} className="flex items-center gap-3 py-2">
+                <span className="thai min-w-0 flex-1 truncate text-lg">{row.label}</span>
+                <span className="min-w-0 flex-1 truncate text-xs text-muted">{row.sub}</span>
+                <span
+                  className="text-[10px] uppercase text-muted"
+                  title={row.direction === 'recognise' ? 'reading' : 'producing'}
+                >
+                  {row.direction === 'recognise' ? 'R' : 'P'}
+                </span>
+                <span
+                  className={`text-xs ${row.grade === 'got' ? 'text-class-mid' : 'text-class-high'}`}
+                >
+                  {row.grade === 'got' ? 'right' : 'missed'}
+                </span>
+                <span className="w-16 text-right text-xs text-muted">
+                  {row.interval === 0 ? 'next time' : `${row.interval}d`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <div className="mt-6 flex gap-3">
+        <Link href="/practice" className="rounded-xl border border-edge px-5 py-3 text-sm">
+          Characters
+        </Link>
+        <Link href="/words/practice" className="rounded-xl border border-edge px-5 py-3 text-sm">
+          Words
+        </Link>
+        <button
+          onClick={onAgain}
+          className="rounded-xl bg-foreground px-5 py-3 text-sm font-medium text-background"
+        >
+          Again
+        </button>
+      </div>
+    </main>
+  )
+}
+
 function Card({
   revealed,
   onReveal,
@@ -83,6 +180,19 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   const [states, setStates] = useState(() => new Map(cards.map((c) => [c.key, c.state])))
   const [revealed, setRevealed] = useState(false)
   const [faceIndex, setFaceIndex] = useState(0)
+  // Kept for the summary. Grades are already persisted per card the moment
+  // they're given, so this is a display record, not the source of truth.
+  const [results, setResults] = useState<
+    {
+      key: string
+      label: string
+      sub: string
+      direction: Direction
+      grade: Grade
+      interval: number
+    }[]
+  >([])
+  const [ended, setEnded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
@@ -103,6 +213,24 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     if (result.scheduling) {
       setStates((prev) => new Map(prev).set(entry.id, result.scheduling!.after))
     }
+
+    if (!entry.reinforcement) {
+      const after = result.scheduling?.after
+      setResults((prev) => [
+        ...prev,
+        {
+          key: entry.id,
+          direction: card.direction,
+          label: card.item.thai,
+          sub:
+            card.item.type === 'word'
+              ? card.item.word.english
+              : `/${card.item.ipa}/`,
+          grade: g,
+          interval: after?.intervalDays ?? state.intervalDays,
+        },
+      ])
+    }
     setSession(result.session)
     setRevealed(false)
     setError(null)
@@ -120,32 +248,8 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     }
   }
 
-  if (!entry || !card) {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-6 text-center">
-        <p className="thai text-5xl select-none" aria-hidden>
-          พอแล้ว
-        </p>
-        <div>
-          <h1 className="text-xl font-medium">Done</h1>
-          <p className="mt-2 text-sm text-muted">
-            {session.completed.length} card{session.completed.length === 1 ? '' : 's'} this
-            session.
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Link href="/practice" className="rounded-xl border border-edge px-5 py-3 text-sm">
-            New session
-          </Link>
-          <button
-            onClick={() => router.refresh()}
-            className="rounded-xl bg-foreground px-5 py-3 text-sm font-medium text-background"
-          >
-            Check again
-          </button>
-        </div>
-      </main>
-    )
+  if (!entry || !card || ended) {
+    return <Summary results={results} onAgain={() => router.refresh()} />
   }
 
   const { item, direction } = card
@@ -166,9 +270,9 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
           >
             {face.label}
           </button>
-          <Link href="/practice" className="underline underline-offset-4">
-            Change
-          </Link>
+          <button onClick={() => setEnded(true)} className="underline underline-offset-4">
+            End
+          </button>
         </div>
       </header>
 

@@ -14,9 +14,10 @@ import { approveWords } from '../actions'
  */
 interface Props {
   worksheetId: string
-  status: 'extracting' | 'ready' | 'failed' | 'reviewed'
+  status: 'uploading' | 'extracting' | 'verifying' | 'ready' | 'failed' | 'reviewed'
   images: string[]
   pack: string | null
+  autoAdded: number
   extracted: ExtractedWord[]
   error: string | null
 }
@@ -36,11 +37,16 @@ export default function ReviewClient({
   status,
   images,
   pack,
+  autoAdded,
   extracted,
   error,
 }: Props) {
   const router = useRouter()
-  const [rows, setRows] = useState<Row[]>(() => extracted.map((word) => ({ ...word, keep: true })))
+  // Everything that passed the check is already in the deck; this screen is
+  // only for what was held back.
+  const [rows, setRows] = useState<Row[]>(() =>
+    extracted.filter((word) => !word.added).map((word) => ({ ...word, keep: false })),
+  )
   const [showImages, setShowImages] = useState(false)
   const [packName, setPackName] = useState(pack ?? '')
   const [, startTransition] = useTransition()
@@ -68,10 +74,11 @@ export default function ReviewClient({
     })
   }
 
-  if (status === 'extracting') {
+  if (status === 'uploading' || status === 'extracting' || status === 'verifying') {
     return (
       <p className="mt-8 text-sm text-muted">
-        Reading the page… this usually takes a few seconds on a dense one.
+        {status === 'verifying' ? 'Checking what was found…' : 'Reading the pages…'} You can
+        leave this page; it carries on without you.
       </p>
     )
   }
@@ -93,8 +100,15 @@ export default function ReviewClient({
   return (
     <>
       <p className="mt-2 text-sm text-muted">
-        Least certain first. Edit anything that is wrong, untick anything that is not
-        vocabulary, then add.
+        {autoAdded > 0 ? (
+          <>
+            <strong>{autoAdded}</strong> item{autoAdded === 1 ? '' : 's'} passed the check and
+            {' '}are already in your deck.{' '}
+          </>
+        ) : null}
+        {rows.length > 0
+          ? `${rows.length} looked wrong and were held back. Fix and tick anything worth keeping.`
+          : 'Nothing was held back.'}
       </p>
 
       <div className="mt-3">
@@ -166,14 +180,15 @@ export default function ReviewClient({
               onChange={(event) => update(index, { english: event.target.value })}
               className="mt-1 w-full rounded-lg bg-surface px-2 py-2 text-sm outline-none focus:ring-1 focus:ring-class-mid"
             />
+            {row.issue ? (
+              <p className="mt-1 text-xs text-class-high">{row.issue}</p>
+            ) : null}
             {row.notes ? <p className="mt-1 text-xs text-muted">{row.notes}</p> : null}
           </li>
         ))}
       </ul>
 
-      {rows.length === 0 ? (
-        <p className="mt-4 text-sm text-muted">Nothing was found on that page.</p>
-      ) : (
+      {rows.length === 0 ? null : (
         <div className="sticky bottom-0 mt-6 -mx-5 border-t border-edge bg-background px-5 py-4">
           <button
             onClick={approve}

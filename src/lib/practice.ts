@@ -72,7 +72,15 @@ export async function selectedItems(selection: Selection): Promise<PracticeItem[
     ? PRACTICE_ITEMS
     : PRACTICE_ITEMS.filter((item) => wanted.has(item.group))
 
-  const words = includeAll || wanted.has(WORDS_GROUP) ? await listWordItems() : []
+  // Vocabulary groups are per-pack ("pack:Food"), plus "words" for ungrouped —
+  // so any of those means the deck has to be loaded, not just the literal one.
+  const wantsWords =
+    includeAll ||
+    selection.groups.some((group) => group === WORDS_GROUP || group.startsWith('pack:'))
+
+  const words = wantsWords
+    ? (await listWordItems()).filter((item) => includeAll || wanted.has(item.group))
+    : []
 
   return [...staticItems, ...words]
 }

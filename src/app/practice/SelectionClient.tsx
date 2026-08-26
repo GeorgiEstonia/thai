@@ -10,18 +10,15 @@ import {
   type Direction,
   PRACTICE_ITEMS,
   SELECTABLE_GROUPS,
-  WORDS_GROUP,
   cardKey,
-  packGroupId,
 } from '@/content/items'
 
 interface Props {
   dueByKey: Record<string, boolean>
   seenKeys: string[]
-  words: { id: string; thai: string; pack: string | null }[]
 }
 
-export default function SelectionClient({ dueByKey, seenKeys, words }: Props) {
+export default function SelectionClient({ dueByKey, seenKeys }: Props) {
   const router = useRouter()
   const [groups, setGroups] = useState<string[]>([])
   const [directions, setDirections] = useState<Direction[]>([...DIRECTIONS])
@@ -43,29 +40,9 @@ export default function SelectionClient({ dueByKey, seenKeys, words }: Props) {
     }
 
     for (const item of PRACTICE_ITEMS) countInto(item.group, item.type, item.id)
-    for (const word of words) countInto(packGroupId(word.pack), 'word', word.id)
 
     return out
-  }, [directions, dueByKey, seen, words])
-
-  // One selectable group per pack, so a session can be "Chapter 3" alone.
-  const wordPacks = useMemo(() => {
-    const byGroup = new Map<string, { label: string; preview: string[]; count: number }>()
-    for (const word of words) {
-      const id = packGroupId(word.pack)
-      const entry = byGroup.get(id) ?? {
-        label: word.pack ?? 'Ungrouped',
-        preview: [],
-        count: 0,
-      }
-      if (entry.preview.length < 5) entry.preview.push(word.thai)
-      entry.count++
-      byGroup.set(id, entry)
-    }
-    return [...byGroup.entries()]
-      .sort((a, b) => a[1].label.localeCompare(b[1].label))
-      .map(([id, entry]) => ({ id, kind: 'word', ...entry }))
-  }, [words])
+  }, [directions, dueByKey, seen])
 
   const consonants = SELECTABLE_GROUPS.filter((group) => group.kind === 'character')
   const vowels = SELECTABLE_GROUPS.filter((group) => group.kind === 'vowel')
@@ -180,32 +157,6 @@ export default function SelectionClient({ dueByKey, seenKeys, words }: Props) {
           </button>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">{consonants.map(renderGroup)}</div>
-      </section>
-
-      <section className="mt-6">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-xs uppercase tracking-widest text-muted">Words</h2>
-          <Link href="/words" className="text-xs text-muted underline underline-offset-4">
-            manage
-          </Link>
-        </div>
-        {words.length === 0 ? (
-          <p className="mt-2 rounded-xl border border-dashed border-edge p-4 text-sm text-muted">
-            No words yet.{' '}
-            <Link href="/words" className="underline underline-offset-4">
-              Add some
-            </Link>{' '}
-            or{' '}
-            <Link href="/capture" className="underline underline-offset-4">
-              photograph a lesson page
-            </Link>
-            .
-          </p>
-        ) : (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {wordPacks.map((group) => renderGroup(group))}
-          </div>
-        )}
       </section>
 
       <section className="mt-6">

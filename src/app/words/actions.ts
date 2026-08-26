@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { requireAuth } from '@/lib/auth'
-import { addWords, deleteWord } from '@/lib/words'
+import { addWords, deleteWord, updateWord } from '@/lib/words'
 
 export async function createWord(
   _prev: { error?: string } | undefined,
@@ -30,4 +30,14 @@ export async function removeWord(id: string): Promise<void> {
   await requireAuth()
   await deleteWord(id)
   revalidatePath('/words')
+}
+
+export async function editWord(
+  id: string,
+  patch: { thai: string; ipa: string; english: string; notes: string | null; pack: string | null },
+): Promise<void> {
+  await requireAuth()
+  await updateWord(id, patch)
+  revalidatePath('/words')
+  revalidatePath('/words/practice')
 }

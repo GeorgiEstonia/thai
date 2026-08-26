@@ -1,5 +1,5 @@
 {
-  "id": "2ff6d010-6f78-4fad-b4d7-c047dbf2687b",
+  "id": "336359ad-134a-4855-9356-b030154b2a94",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -298,7 +298,14 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'extracting'"
+          "default": "'uploading'"
+        },
+        "auto_added": {
+          "name": "auto_added",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "extracted": {
           "name": "extracted",

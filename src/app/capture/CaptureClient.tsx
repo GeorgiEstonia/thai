@@ -3,14 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-import { uploadPages } from './actions'
-
-/** Longest edge sent to the model — inside its high-resolution range, small
- *  enough that a batch of pages still uploads from a phone. */
-const MAX_EDGE = 2000
-
-/** Whole textbook chapters at once; beyond this the request gets unwieldy. */
-const MAX_PAGES = 12
+/** Long edge sent to the model — inside its high-resolution range, and small
+ *  enough that one page per request stays comfortably under any body limit. */
+const MAX_EDGE = 1800
+const MAX_PAGES = 20
 
 async function downscale(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file)
@@ -24,33 +20,55 @@ async function downscale(file: File): Promise<string> {
   if (!context) throw new Error('Could not read the image')
   context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
 
-  return canvas.toDataURL('image/jpeg', 0.9)
+  return canvas.toDataURL('image/jpeg', 0.85)
 }
 
 export default function CaptureClient({ packs }: { packs: string[] }) {
   const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [count, setCount] = useState(0)
   const [pack, setPack] = useState('')
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function handleFiles(fileList: FileList | null) {
     const files = [...(fileList ?? [])].slice(0, MAX_PAGES)
     if (files.length === 0) return
 
-    setBusy(true)
-    setCount(files.length)
     setError(null)
+    setProgress({ done: 0, total: files.length })
+
     try {
-      // All pages go in one request so repeats across pages collapse.
-      const images = await Promise.all(files.map(downscale))
-      const { id } = await uploadPages(images, pack.trim() || null)
-      router.push(`/capture/${id}`)
+      const created = await fetch('/api/worksheets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pack: pack.trim() || null }),
+      })
+      if (!created.ok) throw new Error('could not start')
+      const { id } = (await created.json()) as { id: string }
+
+      // One page per request — a whole batch in one body is what used to fail.
+      for (const [index, file] of files.entries()) {
+        const image = await downscale(file)
+        const response = await fetch(`/api/worksheets/${id}/pages`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ image }),
+        })
+        if (!response.ok) throw new Error(`page ${index + 1} failed`)
+        setProgress({ done: index + 1, total: files.length })
+      }
+
+      // Reading and checking happen server-side; you don't have to stay here.
+      await fetch(`/api/worksheets/${id}/start`, { method: 'POST' })
+
+      setProgress(null)
+      router.refresh()
     } catch {
-      setError('That did not upload. Try fewer pages at once.')
-      setBusy(false)
+      setError('Upload failed. Try again, or with fewer pages.')
+      setProgress(null)
     }
   }
+
+  const busy = progress !== null
 
   return (
     <div className="mt-5">
@@ -72,7 +90,7 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
       </datalist>
 
       <label
-        className={`mt-3 flex h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-edge text-sm ${
+        className={`mt-3 flex h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-edge text-sm ${
           busy ? 'opacity-50' : ''
         }`}
       >
@@ -88,7 +106,7 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
           ⌗
         </span>
         <span className="mt-2 text-muted">
-          {busy ? `Reading ${count} page${count === 1 ? '' : 's'}…` : 'Choose or photograph pages'}
+          {busy ? `Uploading ${progress.done}/${progress.total}…` : 'Choose or photograph pages'}
         </span>
         <span className="mt-1 text-xs text-muted">up to {MAX_PAGES} at once</span>
       </label>

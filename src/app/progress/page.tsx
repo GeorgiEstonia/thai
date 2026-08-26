@@ -9,6 +9,7 @@ import {
 } from '@/content/items'
 import { requireAuth } from '@/lib/auth'
 import { loadProgress } from '@/lib/practice'
+import { listWordItems } from '@/lib/words'
 import { LEECH_LAPSE_THRESHOLD, type SrsState, isDue } from '@/lib/srs'
 
 export const dynamic = 'force-dynamic'
@@ -25,10 +26,11 @@ export default async function ProgressPage() {
   await requireAuth()
 
   const now = new Date()
-  const progress = await loadProgress()
+  const [progress, wordItems] = await Promise.all([loadProgress(), listWordItems()])
 
+  // Words belong here too — mastery is mastery, whatever kind of item it is.
   const itemsByGroup = new Map<string, typeof PRACTICE_ITEMS>()
-  for (const item of PRACTICE_ITEMS) {
+  for (const item of [...PRACTICE_ITEMS, ...wordItems]) {
     const list = itemsByGroup.get(item.group) ?? []
     list.push(item)
     itemsByGroup.set(item.group, list)
@@ -49,7 +51,17 @@ export default async function ProgressPage() {
       </p>
 
       <div className="mt-6 space-y-6">
-        {SELECTABLE_GROUPS.map((group) => {
+        {[
+          ...SELECTABLE_GROUPS,
+          // One section per vocabulary pack, in the same shape.
+          ...[...new Set(wordItems.map((item) => item.group))].sort().map((id) => ({
+            id,
+            kind: 'word' as const,
+            label: id === 'words' ? 'Ungrouped words' : id.replace(/^pack:/, ''),
+            preview: [],
+            count: 0,
+          })),
+        ].map((group) => {
           const items = itemsByGroup.get(group.id) ?? []
           if (items.length === 0) return null
 

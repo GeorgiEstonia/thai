@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { __setTestDb, getDb, schema } from './db'
+import { selectedItems } from './practice'
 import {
   addWords,
   deleteWord,
@@ -153,5 +154,35 @@ describe('packs', () => {
     ])
     const [word] = await listWords()
     expect(word.kind).toBe('phrase')
+  })
+})
+
+describe('selecting a pack', () => {
+  it('loads the words in that pack, not just ungrouped vocabulary', async () => {
+    await addWords([
+      { thai: 'ข้าว', ipa: 'kʰâːw', english: 'rice', pack: 'Food', source: 'manual' },
+      { thai: 'รถ', ipa: 'rót', english: 'car', pack: 'Travel', source: 'manual' },
+      { thai: 'ไป', ipa: 'paj', english: 'to go', source: 'manual' },
+    ])
+
+    const picked = await selectedItems({ groups: ['pack:Food'], directions: ['recognise'] })
+    expect(picked.map((item) => item.thai)).toEqual(['ข้าว'])
+  })
+
+  it('still handles the ungrouped bucket on its own', async () => {
+    await addWords([
+      { thai: 'ข้าว', ipa: 'kʰâːw', english: 'rice', pack: 'Food', source: 'manual' },
+      { thai: 'ไป', ipa: 'paj', english: 'to go', source: 'manual' },
+    ])
+
+    const picked = await selectedItems({ groups: ['words'], directions: ['recognise'] })
+    expect(picked.map((item) => item.thai)).toEqual(['ไป'])
+  })
+
+  it('loads no vocabulary when only sounds are selected', async () => {
+    await addWords([{ thai: 'ข้าว', ipa: 'kʰâːw', english: 'rice', pack: 'Food', source: 'manual' }])
+
+    const picked = await selectedItems({ groups: ['k'], directions: ['recognise'] })
+    expect(picked.every((item) => item.type === 'character')).toBe(true)
   })
 })

@@ -47,7 +47,8 @@ CREATE TABLE "worksheets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"images" jsonb NOT NULL,
 	"pack" text,
-	"status" text DEFAULT 'extracting' NOT NULL,
+	"status" text DEFAULT 'uploading' NOT NULL,
+	"auto_added" integer DEFAULT 0 NOT NULL,
 	"extracted" jsonb,
 	"error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL

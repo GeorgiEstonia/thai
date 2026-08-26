@@ -17,10 +17,13 @@ export default async function WordsPage() {
       <header className="flex items-baseline justify-between">
         <h1 className="text-lg font-medium">Words</h1>
         <div className="flex gap-3 text-sm text-muted">
+          <Link href="/generate" className="underline underline-offset-4">
+            Generate
+          </Link>
           <Link href="/capture" className="underline underline-offset-4">
             Photograph
           </Link>
-          <Link href="/practice" className="underline underline-offset-4">
+          <Link href="/words/practice" className="underline underline-offset-4">
             Practise
           </Link>
         </div>
