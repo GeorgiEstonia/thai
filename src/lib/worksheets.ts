@@ -4,19 +4,19 @@ import { getDb, schema } from './db'
 import type { ExtractedWord } from './db/schema'
 import { extractWords } from './extract'
 
-export async function createWorksheet(imageDataUrl: string): Promise<string> {
+export async function createWorksheet(images: string[], pack: string | null): Promise<string> {
   const [row] = await getDb()
     .insert(schema.worksheets)
-    .values({ image: imageDataUrl, status: 'extracting' })
+    .values({ images, pack, status: 'extracting' })
     .returning({ id: schema.worksheets.id })
   return row.id
 }
 
 /** Runs extraction and records the outcome, success or failure. */
-export async function runExtraction(worksheetId: string, imageDataUrl: string): Promise<void> {
+export async function runExtraction(worksheetId: string, images: string[]): Promise<void> {
   const db = getDb()
   try {
-    const words = await extractWords(imageDataUrl)
+    const words = await extractWords(images)
     await db
       .update(schema.worksheets)
       .set({ status: 'ready', extracted: words, error: null })
@@ -44,6 +44,7 @@ export async function listWorksheets() {
       status: schema.worksheets.status,
       createdAt: schema.worksheets.createdAt,
       extracted: schema.worksheets.extracted,
+      pack: schema.worksheets.pack,
     })
     .from(schema.worksheets)
     .orderBy(desc(schema.worksheets.createdAt))

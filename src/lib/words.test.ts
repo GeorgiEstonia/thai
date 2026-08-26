@@ -6,7 +6,15 @@ import { drizzle } from 'drizzle-orm/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { __setTestDb, getDb, schema } from './db'
-import { addWords, deleteWord, listWordItems, listWords, loadNotes, saveNote } from './words'
+import {
+  addWords,
+  deleteWord,
+  listPacks,
+  listWordItems,
+  listWords,
+  loadNotes,
+  saveNote,
+} from './words'
 
 const client = new PGlite()
 const db = drizzle(client, { schema })
@@ -114,5 +122,36 @@ describe('personal mnemonics', () => {
 
     await saveNote('character', 'ko-kai', '   ')
     expect((await loadNotes()).has('character:ko-kai')).toBe(false)
+  })
+})
+
+describe('packs', () => {
+  it('files words under a pack and lists the distinct names', async () => {
+    await addWords([
+      { thai: 'ก', ipa: 'k', english: 'a', pack: 'Chapter 3', source: 'manual' },
+      { thai: 'ข', ipa: 'kʰ', english: 'b', pack: 'Chapter 3', source: 'manual' },
+      { thai: 'ค', ipa: 'kʰ', english: 'c', pack: 'Chapter 4', source: 'manual' },
+      { thai: 'ง', ipa: 'ŋ', english: 'd', source: 'manual' },
+    ])
+
+    expect(await listPacks()).toEqual(['Chapter 3', 'Chapter 4'])
+  })
+
+  it('groups word items by pack so a session can be one chapter', async () => {
+    await addWords([
+      { thai: 'ก', ipa: 'k', english: 'a', pack: 'Chapter 3', source: 'manual' },
+      { thai: 'ง', ipa: 'ŋ', english: 'd', source: 'manual' },
+    ])
+
+    const groups = (await listWordItems()).map((item) => item.group).sort()
+    expect(groups).toEqual(['pack:Chapter 3', 'words'])
+  })
+
+  it('stores phrases alongside words', async () => {
+    await addWords([
+      { thai: 'คุณมีพี่น้องกี่คน', ipa: '', english: 'How many siblings do you have?', kind: 'phrase', source: 'worksheet' },
+    ])
+    const [word] = await listWords()
+    expect(word.kind).toBe('phrase')
   })
 })

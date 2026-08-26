@@ -53,6 +53,10 @@ export const words = pgTable('words', {
   /** IPA, to match how you work everywhere else in the app. */
   ipa: text('ipa').notNull(),
   english: text('english').notNull(),
+  /** A single word, or a whole phrase/sentence kept intact. */
+  kind: text('kind', { enum: ['word', 'phrase'] }).notNull().default('word'),
+  /** Free-text grouping — a textbook chapter, a lesson, a topic. Null = ungrouped. */
+  pack: text('pack'),
   /** Anything else worth keeping — usage, register, who said it. */
   notes: text('notes'),
   source: text('source', { enum: ['manual', 'worksheet'] }).notNull(),
@@ -91,8 +95,10 @@ export const itemNotes = pgTable(
  */
 export const worksheets = pgTable('worksheets', {
   id: uuid('id').primaryKey().defaultRandom(),
-  /** The captured page, stored inline as a data URL. */
-  image: text('image').notNull(),
+  /** The captured pages, as data URLs. A batch is read in one request. */
+  images: jsonb('images').$type<string[]>().notNull(),
+  /** Pack every approved item from this batch is filed under. */
+  pack: text('pack'),
   status: text('status', { enum: ['extracting', 'ready', 'failed', 'reviewed'] })
     .notNull()
     .default('extracting'),
@@ -107,6 +113,11 @@ export interface ExtractedWord {
   thai: string
   ipa: string
   english: string
+  /**
+   * Sentences are kept whole AND broken into their parts, so a page yields
+   * both the phrase you'll want to say and every new word inside it.
+   */
+  kind: 'word' | 'phrase'
   notes: string | null
   confidence: 'high' | 'medium' | 'low'
 }

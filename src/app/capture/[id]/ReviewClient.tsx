@@ -15,7 +15,8 @@ import { approveWords } from '../actions'
 interface Props {
   worksheetId: string
   status: 'extracting' | 'ready' | 'failed' | 'reviewed'
-  image: string
+  images: string[]
+  pack: string | null
   extracted: ExtractedWord[]
   error: string | null
 }
@@ -30,10 +31,18 @@ const CONFIDENCE_STYLE = {
   low: 'text-class-high',
 } as const
 
-export default function ReviewClient({ worksheetId, status, image, extracted, error }: Props) {
+export default function ReviewClient({
+  worksheetId,
+  status,
+  images,
+  pack,
+  extracted,
+  error,
+}: Props) {
   const router = useRouter()
   const [rows, setRows] = useState<Row[]>(() => extracted.map((word) => ({ ...word, keep: true })))
-  const [showImage, setShowImage] = useState(false)
+  const [showImages, setShowImages] = useState(false)
+  const [packName, setPackName] = useState(pack ?? '')
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
 
@@ -53,8 +62,8 @@ export default function ReviewClient({ worksheetId, status, image, extracted, er
     startTransition(async () => {
       const approved = rows
         .filter((row) => row.keep)
-        .map(({ thai, ipa, english, notes }) => ({ thai, ipa, english, notes }))
-      await approveWords(worksheetId, approved)
+        .map(({ thai, ipa, english, kind, notes }) => ({ thai, ipa, english, kind, notes }))
+      await approveWords(worksheetId, approved, packName.trim() || null)
       router.push('/words')
     })
   }
@@ -88,16 +97,31 @@ export default function ReviewClient({ worksheetId, status, image, extracted, er
         vocabulary, then add.
       </p>
 
+      <div className="mt-3">
+        <label className="text-xs uppercase tracking-widest text-muted" htmlFor="pack">
+          Pack
+        </label>
+        <input
+          id="pack"
+          value={packName}
+          onChange={(event) => setPackName(event.target.value)}
+          placeholder="Ungrouped"
+          className="mt-1 w-full rounded-xl border border-edge bg-surface px-3 py-2 text-sm outline-none focus:border-class-mid"
+        />
+      </div>
+
       <button
-        onClick={() => setShowImage((v) => !v)}
+        onClick={() => setShowImages((v) => !v)}
         className="mt-3 text-xs text-muted underline underline-offset-4"
       >
-        {showImage ? 'Hide the photo' : 'Show the photo'}
+        {showImages ? 'Hide pages' : `Show ${images.length} page${images.length === 1 ? '' : 's'}`}
       </button>
-      {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="The photographed lesson page" className="mt-2 w-full rounded-xl" />
-      ) : null}
+      {showImages
+        ? images.map((src, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={i} src={src} alt={`Page ${i + 1}`} className="mt-2 w-full rounded-xl" />
+          ))
+        : null}
 
       <ul className="mt-4 space-y-3">
         {rows.map((row, index) => (
@@ -108,8 +132,13 @@ export default function ReviewClient({ worksheetId, status, image, extracted, er
             }`}
           >
             <div className="flex items-start justify-between gap-2">
-              <span className={`text-[10px] uppercase ${CONFIDENCE_STYLE[row.confidence]}`}>
-                {row.confidence}
+              <span className="flex items-center gap-2 text-[10px] uppercase">
+                <span className={CONFIDENCE_STYLE[row.confidence]}>{row.confidence}</span>
+                {row.kind === 'phrase' ? (
+                  <span className="rounded-full border border-edge px-2 py-0.5 text-muted">
+                    phrase
+                  </span>
+                ) : null}
               </span>
               <label className="flex items-center gap-2 text-xs text-muted">
                 keep

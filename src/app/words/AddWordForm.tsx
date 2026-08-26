@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef } from 'react'
 
 import { createWord } from './actions'
 
-export default function AddWordForm() {
+export default function AddWordForm({ packs }: { packs: string[] }) {
   const [state, formAction, pending] = useActionState(createWord, {})
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -34,6 +34,28 @@ export default function AddWordForm() {
         autoComplete="off"
         className="rounded-xl border border-edge bg-surface px-3 py-3 text-sm outline-none focus:border-class-mid"
       />
+      <div className="flex gap-2">
+        <input
+          name="pack"
+          list="packs"
+          placeholder="Pack (optional)"
+          autoComplete="off"
+          className="min-w-0 flex-1 rounded-xl border border-edge bg-surface px-3 py-3 text-sm outline-none focus:border-class-mid"
+        />
+        <datalist id="packs">
+          {packs.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <select
+          name="kind"
+          className="rounded-xl border border-edge bg-surface px-3 py-3 text-sm outline-none focus:border-class-mid"
+        >
+          <option value="word">word</option>
+          <option value="phrase">phrase</option>
+        </select>
+      </div>
+
       <input
         name="notes"
         placeholder="Notes (optional)"

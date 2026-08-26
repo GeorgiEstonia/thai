@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { requireAuth } from '@/lib/auth'
-import { listWords } from '@/lib/words'
+import { listPacks, listWords } from '@/lib/words'
 
 import AddWordForm from './AddWordForm'
 import WordRow from './WordRow'
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function WordsPage() {
   await requireAuth()
-  const words = await listWords()
+  const [words, packs] = await Promise.all([listWords(), listPacks()])
 
   return (
     <main className="flex-1 px-5 py-6 max-w-md w-full mx-auto">
@@ -26,7 +26,7 @@ export default async function WordsPage() {
         </div>
       </header>
 
-      <AddWordForm />
+      <AddWordForm packs={packs} />
 
       <p className="mt-8 text-xs uppercase tracking-widest text-muted">
         {words.length} word{words.length === 1 ? '' : 's'}

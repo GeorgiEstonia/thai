@@ -35,6 +35,8 @@ CREATE TABLE "words" (
 	"thai" text NOT NULL,
 	"ipa" text NOT NULL,
 	"english" text NOT NULL,
+	"kind" text DEFAULT 'word' NOT NULL,
+	"pack" text,
 	"notes" text,
 	"source" text NOT NULL,
 	"worksheet_id" uuid,
@@ -43,7 +45,8 @@ CREATE TABLE "words" (
 --> statement-breakpoint
 CREATE TABLE "worksheets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"image" text NOT NULL,
+	"images" jsonb NOT NULL,
+	"pack" text,
 	"status" text DEFAULT 'extracting' NOT NULL,
 	"extracted" jsonb,
 	"error" text,

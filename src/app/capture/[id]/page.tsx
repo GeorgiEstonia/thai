@@ -28,7 +28,8 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         key={`${worksheet.status}:${worksheet.extracted?.length ?? 0}`}
         worksheetId={worksheet.id}
         status={worksheet.status}
-        image={worksheet.image}
+        images={worksheet.images}
+        pack={worksheet.pack}
         extracted={worksheet.extracted ?? []}
         error={worksheet.error}
       />

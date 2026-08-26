@@ -39,7 +39,15 @@ export interface WordRecord {
   thai: string
   ipa: string
   english: string
+  kind: 'word' | 'phrase'
+  /** Free-text grouping, e.g. a textbook chapter. Null means ungrouped. */
+  pack: string | null
   notes: string | null
+}
+
+/** Selection group id for a pack — packs are selectable just like phonemes. */
+export function packGroupId(pack: string | null): string {
+  return pack ? `pack:${pack}` : WORDS_GROUP
 }
 
 interface ItemBase {
@@ -62,7 +70,7 @@ export function wordItem(word: WordRecord): PracticeItem {
   return {
     type: 'word',
     id: word.id,
-    group: WORDS_GROUP,
+    group: packGroupId(word.pack),
     thai: word.thai,
     ipa: word.ipa,
     word,

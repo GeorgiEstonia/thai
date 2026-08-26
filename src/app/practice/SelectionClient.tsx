@@ -12,12 +12,13 @@ import {
   SELECTABLE_GROUPS,
   WORDS_GROUP,
   cardKey,
+  packGroupId,
 } from '@/content/items'
 
 interface Props {
   dueByKey: Record<string, boolean>
   seenKeys: string[]
-  words: { id: string; thai: string }[]
+  words: { id: string; thai: string; pack: string | null }[]
 }
 
 export default function SelectionClient({ dueByKey, seenKeys, words }: Props) {
@@ -42,10 +43,29 @@ export default function SelectionClient({ dueByKey, seenKeys, words }: Props) {
     }
 
     for (const item of PRACTICE_ITEMS) countInto(item.group, item.type, item.id)
-    for (const word of words) countInto(WORDS_GROUP, 'word', word.id)
+    for (const word of words) countInto(packGroupId(word.pack), 'word', word.id)
 
     return out
   }, [directions, dueByKey, seen, words])
+
+  // One selectable group per pack, so a session can be "Chapter 3" alone.
+  const wordPacks = useMemo(() => {
+    const byGroup = new Map<string, { label: string; preview: string[]; count: number }>()
+    for (const word of words) {
+      const id = packGroupId(word.pack)
+      const entry = byGroup.get(id) ?? {
+        label: word.pack ?? 'Ungrouped',
+        preview: [],
+        count: 0,
+      }
+      if (entry.preview.length < 5) entry.preview.push(word.thai)
+      entry.count++
+      byGroup.set(id, entry)
+    }
+    return [...byGroup.entries()]
+      .sort((a, b) => a[1].label.localeCompare(b[1].label))
+      .map(([id, entry]) => ({ id, kind: 'word', ...entry }))
+  }, [words])
 
   const consonants = SELECTABLE_GROUPS.filter((group) => group.kind === 'character')
   const vowels = SELECTABLE_GROUPS.filter((group) => group.kind === 'vowel')
@@ -182,14 +202,8 @@ export default function SelectionClient({ dueByKey, seenKeys, words }: Props) {
             .
           </p>
         ) : (
-          <div className="mt-2">
-            {renderGroup({
-              id: WORDS_GROUP,
-              kind: 'word',
-              label: `Vocabulary · ${words.length}`,
-              preview: words.slice(0, 6).map((word) => word.thai),
-              count: words.length,
-            })}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {wordPacks.map((group) => renderGroup(group))}
           </div>
         )}
       </section>

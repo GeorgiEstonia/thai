@@ -13,6 +13,8 @@ export async function listWords(): Promise<WordRecord[]> {
     thai: row.thai,
     ipa: row.ipa,
     english: row.english,
+    kind: row.kind,
+    pack: row.pack,
     notes: row.notes,
   }))
 }
@@ -25,6 +27,8 @@ export interface NewWord {
   thai: string
   ipa: string
   english: string
+  kind?: 'word' | 'phrase'
+  pack?: string | null
   notes?: string | null
   source: 'manual' | 'worksheet'
   worksheetId?: string | null
@@ -40,6 +44,8 @@ export async function addWords(newWords: NewWord[]): Promise<string[]> {
         thai: word.thai.trim(),
         ipa: word.ipa.trim(),
         english: word.english.trim(),
+        kind: word.kind ?? 'word',
+        pack: word.pack?.trim() || null,
         notes: word.notes?.trim() || null,
         source: word.source,
         worksheetId: word.worksheetId ?? null,
@@ -48,6 +54,14 @@ export async function addWords(newWords: NewWord[]): Promise<string[]> {
     .returning({ id: schema.words.id })
 
   return rows.map((row) => row.id)
+}
+
+/** Distinct pack names, for the selection screen and the add form. */
+export async function listPacks(): Promise<string[]> {
+  const words = await listWords()
+  const packs = new Set<string>()
+  for (const word of words) if (word.pack) packs.add(word.pack)
+  return [...packs].sort()
 }
 
 export async function deleteWord(id: string): Promise<void> {

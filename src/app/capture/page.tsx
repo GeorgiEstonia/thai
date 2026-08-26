@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { requireAuth } from '@/lib/auth'
+import { listPacks } from '@/lib/words'
 import { listWorksheets } from '@/lib/worksheets'
 
 import CaptureClient from './CaptureClient'
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function CapturePage() {
   await requireAuth()
-  const worksheets = await listWorksheets()
+  const [worksheets, packs] = await Promise.all([listWorksheets(), listPacks()])
 
   return (
     <main className="flex-1 px-5 py-6 max-w-md w-full mx-auto">
@@ -20,11 +21,11 @@ export default async function CapturePage() {
         </Link>
       </header>
       <p className="mt-2 text-sm text-muted">
-        Photograph a page and Claude will read the vocabulary off it. Nothing is added until
-        you have checked it.
+        Photograph whole chapters. Sentences are kept as phrases <em>and</em> broken into
+        every word inside them. Nothing is added until you have checked it.
       </p>
 
-      <CaptureClient />
+      <CaptureClient packs={packs} />
 
       {worksheets.length > 0 ? (
         <section className="mt-8">

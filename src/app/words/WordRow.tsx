@@ -17,6 +17,10 @@ export default function WordRow({ word }: { word: WordRecord }) {
           {word.ipa ? <span className="font-mono">/{word.ipa}/ </span> : null}
           {word.english}
         </p>
+        <p className="mt-1 flex flex-wrap gap-2 text-[10px] uppercase text-muted">
+          {word.kind === 'phrase' ? <span>phrase</span> : null}
+          {word.pack ? <span>{word.pack}</span> : null}
+        </p>
         {word.notes ? <p className="mt-1 text-xs text-muted">{word.notes}</p> : null}
       </div>
       <button

@@ -15,7 +15,7 @@ export default async function PracticePage() {
     <SelectionClient
       dueByKey={dueByKey}
       seenKeys={seenKeys}
-      words={words.map((word) => ({ id: word.id, thai: word.thai }))}
+      words={words.map((word) => ({ id: word.id, thai: word.thai, pack: word.pack }))}
     />
   )
 }

@@ -1,5 +1,5 @@
 {
-  "id": "10aa3243-44be-4f77-97d9-0c23e032fd02",
+  "id": "2ff6d010-6f78-4fad-b4d7-c047dbf2687b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -223,6 +223,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'word'"
+        },
+        "pack": {
+          "name": "pack",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "notes": {
           "name": "notes",
           "type": "text",
@@ -268,11 +281,17 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "image": {
-          "name": "image",
-          "type": "text",
+        "images": {
+          "name": "images",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "pack": {
+          "name": "pack",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",
