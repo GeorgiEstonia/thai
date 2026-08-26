@@ -1,0 +1,30 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+
+import { requireAuth } from '@/lib/auth'
+import { addWords, deleteWord } from '@/lib/words'
+
+export async function createWord(
+  _prev: { error?: string } | undefined,
+  formData: FormData,
+): Promise<{ error?: string; added?: string }> {
+  await requireAuth()
+
+  const thai = String(formData.get('thai') ?? '').trim()
+  const ipa = String(formData.get('ipa') ?? '').trim()
+  const english = String(formData.get('english') ?? '').trim()
+  const notes = String(formData.get('notes') ?? '').trim()
+
+  if (!thai || !english) return { error: 'Thai and English are both needed.' }
+
+  await addWords([{ thai, ipa, english, notes, source: 'manual' }])
+  revalidatePath('/words')
+  return { added: thai }
+}
+
+export async function removeWord(id: string): Promise<void> {
+  await requireAuth()
+  await deleteWord(id)
+  revalidatePath('/words')
+}
