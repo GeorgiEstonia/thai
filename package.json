@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
+    "@vercel/functions": "^3.9.5",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.1",
     "postgres": "^3.4.9",
