@@ -164,8 +164,10 @@ export async function activeWorksheets() {
       status: sheet.status,
       pagesDone: sheet.pagesDone,
       pages: sheet.images.length,
-      // A job whose step died leaves no error behind, so infer it from the clock.
-      stalled: sheet.stepAt ? Date.now() - sheet.stepAt.getTime() > STALL_MS : false,
+      // A job whose step died leaves no error behind, so infer it from the
+      // clock. A null stepAt means no step ever ran — which is itself a stall
+      // once the job is no longer fresh, not a reason to wait forever.
+      stalled: Date.now() - (sheet.stepAt ?? sheet.createdAt).getTime() > STALL_MS,
     }))
 }
 
