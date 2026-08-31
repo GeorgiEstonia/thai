@@ -51,6 +51,15 @@ body {
   line-height: 1.4;
 }
 
+/* Vowel patterns, which hang a combining mark on a dotted circle (U+25CC).
+   Sarabun has no dotted circle and does not compose the mark onto one, so
+   every above/below vowel renders as tofu in it. Noto Serif Thai composes
+   them correctly, and is still a looped face, so vowels use it. */
+.thai-vowel {
+  font-family: var(--font-thai-serif), "Noto Sans Thai Looped", serif;
+  line-height: 1.4;
+}
+
 .thai-serif {
   font-family: var(--font-thai-serif), serif;
   line-height: 1.4;

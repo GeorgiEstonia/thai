@@ -104,7 +104,11 @@ export default function SelectionClient({ dueByKey, seenKeys }: Props) {
             <span className="text-[11px] text-muted">✓</span>
           )}
         </div>
-        <p className="thai mt-1 text-xl leading-snug">{group.preview.join(' ')}</p>
+        <p
+          className={`${group.kind === 'vowel' ? 'thai-vowel' : 'thai'} mt-1 text-xl leading-snug`}
+        >
+          {group.preview.join(' ')}
+        </p>
       </button>
     )
   }

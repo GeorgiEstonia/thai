@@ -74,7 +74,11 @@ export default async function ProgressPage() {
                   {items.map((item) => (
                     <tr key={`${item.type}-${item.id}`} className="border-t border-edge">
                       <td className="py-2 pr-2">
-                        <span className="thai text-2xl">{item.thai}</span>
+                        <span
+                          className={`${item.type === 'vowel' ? 'thai-vowel' : 'thai'} text-2xl`}
+                        >
+                          {item.thai}
+                        </span>
                       </td>
                       <td className="py-2 pr-2 text-xs text-muted">
                         {item.type === 'character'

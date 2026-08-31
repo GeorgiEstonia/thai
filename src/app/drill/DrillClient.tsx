@@ -253,6 +253,8 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   }
 
   const { item, direction } = card
+  // Vowel patterns need a face that can compose marks onto the dotted circle.
+  const thaiClass = item.type === 'vowel' ? 'thai-vowel' : face.id
   const directionLabel =
     item.type === 'word' ? WORD_DIRECTION_LABELS[direction] : DIRECTION_LABELS[direction]
   const hint = direction === 'produce' ? produceHint(item) : null
@@ -290,7 +292,7 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
         {/* FRONT — what you're being asked. */}
         {direction === 'recognise' ? (
           <span
-            className={`${face.id} select-none leading-none ${
+            className={`${thaiClass} select-none leading-none ${
               item.type === 'word' ? (revealed ? 'text-4xl' : 'text-6xl') : revealed ? 'text-7xl' : 'text-[9rem]'
             }`}
           >
@@ -326,7 +328,9 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
             ) : (
               <div>
                 <p
-                  className={`thai leading-none ${item.type === 'word' ? 'text-4xl' : 'text-7xl'}`}
+                  className={`${item.type === 'vowel' ? 'thai-vowel' : 'thai'} leading-none ${
+                    item.type === 'word' ? 'text-4xl' : 'text-7xl'
+                  }`}
                 >
                   {item.thai}
                 </p>
@@ -384,7 +388,9 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
               </>
             )}
 
-            {item.type !== 'word' ? (
+            {/* Only consonants: a vowel's dotted-circle placeholder does not
+                render in every face, and comparing faces is a consonant skill. */}
+            {item.type === 'character' ? (
               <div className="border-t border-edge pt-4">
                 <p className="mb-2 text-xs uppercase tracking-widest text-muted">Same letter</p>
                 <GlyphFaces glyph={item.thai} />
