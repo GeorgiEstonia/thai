@@ -21,10 +21,13 @@ export default async function DrillPage({
 
   // Built here rather than in the browser so the shuffle can't differ between
   // the server render and hydration.
+  // No cap on new cards: you chose exactly what to practise on the previous
+  // screen, so silently dropping most of it is wrong. A cap made sense only
+  // when batches were unlocked for you.
   const session = buildSession(
     deck.map((card) => ({ id: card.key, state: card.state })),
     now,
-    { maxNew: 10 },
+    { maxNew: Number.POSITIVE_INFINITY },
   )
 
   if (deck.length === 0) {

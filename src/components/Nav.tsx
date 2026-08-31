@@ -26,7 +26,10 @@ export default function Nav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`rounded-lg px-3 py-1.5 text-sm ${
+              aria-current={active ? 'page' : undefined}
+              // Generous padding: a 1.5-unit tall tab is below the ~44px
+              // minimum touch target and gets missed on a phone.
+              className={`rounded-lg px-4 py-3 text-sm ${
                 active ? 'bg-surface font-medium' : 'text-muted'
               }`}
             >

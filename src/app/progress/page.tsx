@@ -2,7 +2,6 @@ import Link from 'next/link'
 
 import {
   DIRECTIONS,
-  DIRECTION_LABELS,
   PRACTICE_ITEMS,
   SELECTABLE_GROUPS,
   cardKey,
@@ -45,9 +44,9 @@ export default async function ProgressPage() {
         </Link>
       </header>
       <p className="mt-2 text-sm text-muted">
-        Every character in both directions. The number is days until it&rsquo;s next due;
-        &ldquo;R&rdquo; is {DIRECTION_LABELS.recognise}, &ldquo;P&rdquo; is{' '}
-        {DIRECTION_LABELS.produce}.
+        Everything you practise, in both directions. The number is days until it&rsquo;s next
+        due. &ldquo;R&rdquo; is reading it (Thai first); &ldquo;P&rdquo; is producing it (sound
+        or meaning first).
       </p>
 
       <div className="mt-6 space-y-6">

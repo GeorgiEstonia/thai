@@ -35,7 +35,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
-  /* Repeated tapping in a drill shouldn't select text or flash a highlight. */
+  /* The default blue flash is ugly during a drill, but removing it with
+     nothing in its place makes every tap feel unregistered — so it is replaced
+     by an explicit :active state on controls below. */
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
@@ -73,4 +75,26 @@ body {
 .thai-hand {
   font-family: var(--font-thai-hand), cursive;
   line-height: 1.4;
+}
+
+/* Immediate feedback on touch. Without this a tap gives no signal until the
+   server responds, and you tap again thinking you missed. */
+button,
+a,
+label,
+summary,
+[role='button'] {
+  touch-action: manipulation;
+}
+
+button:active,
+a:active,
+label:active,
+[role='button']:active {
+  opacity: 0.55;
+  transition: opacity 40ms;
+}
+
+button:disabled:active {
+  opacity: 1;
 }
