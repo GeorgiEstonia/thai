@@ -37,11 +37,18 @@ export function getDb(): Db {
     throw new Error('DATABASE_URL is not set — copy .env.example to .env.local and fill it in')
   }
 
+  // Hosted Postgres (Railway, Neon, Supabase) requires TLS on its public
+  // endpoint, and postgres.js does not enable it from the URL alone — without
+  // this, every query fails in production while working locally. The local dev
+  // database speaks plain TCP, so it must stay off there.
+  const isLocal = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url)
+
   // One connection, deliberately. This app has a single user, so there is no
   // concurrency to win — and the local dev database (PGlite behind a socket)
   // serves one connection at a time, so a larger pool turns any concurrent
   // query into ECONNRESET. Serverless instances each get their own.
-  const sql = globalForDb.thaiSql ?? postgres(url, { max: 1 })
+  const sql =
+    globalForDb.thaiSql ?? postgres(url, { max: 1, ssl: isLocal ? false : 'require' })
   const db = drizzle(sql, { schema })
 
   if (process.env.NODE_ENV !== 'production') {
@@ -53,3 +60,12 @@ export function getDb(): Db {
 }
 
 export { schema }
+
+/**
+ * Exposed for tests: hosted databases need TLS, the local dev one must not
+ * have it. Getting this wrong fails only in production, so it is worth
+ * pinning down.
+ */
+export function needsTls(url: string): boolean {
+  return !/@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url)
+}
