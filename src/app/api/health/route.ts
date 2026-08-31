@@ -47,10 +47,16 @@ export async function GET() {
       words: words.length,
     }
   } catch (error) {
-    database = {
-      ok: false,
-      error: redact(error instanceof Error ? error.message : String(error)),
+    // Drizzle wraps driver errors, so the useful part ("no pg_hba entry",
+    // "self signed certificate", "relation does not exist") is in the cause.
+    const chain: string[] = []
+    let current: unknown = error
+    for (let depth = 0; current instanceof Error && depth < 4; depth++) {
+      const code = (current as Error & { code?: string }).code
+      chain.push(`${current.message}${code ? ` [${code}]` : ''}`)
+      current = (current as Error & { cause?: unknown }).cause
     }
+    database = { ok: false, error: redact(chain.join(' <- ')) }
   }
 
   return NextResponse.json(
