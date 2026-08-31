@@ -151,7 +151,13 @@ export function dedupe(items: ExtractedWord[]): ExtractedWord[] {
   return [...best.values()]
 }
 
-/** Reads a batch of pages in one request, so cross-page repeats collapse. */
+/**
+ * Reads ONE page.
+ *
+ * Deliberately one page per call: a whole chapter in a single request runs
+ * past the serverless function timeout and is killed with no error recorded,
+ * which is exactly how batches were getting stuck.
+ */
 export async function extractWords(imageDataUrls: string[]): Promise<ExtractedWord[]> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY is not set — add it to .env.local')

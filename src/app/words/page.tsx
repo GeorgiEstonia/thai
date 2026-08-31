@@ -1,6 +1,9 @@
 import Link from 'next/link'
 
+import { DIRECTIONS, cardKey, packGroupId } from '@/content/items'
+import PractiseCta from '@/components/PractiseCta'
 import { requireAuth } from '@/lib/auth'
+import { loadDueSnapshot } from '@/lib/practice'
 import { listPacks, listWords } from '@/lib/words'
 
 import AddWordForm from './AddWordForm'
@@ -10,26 +13,61 @@ export const dynamic = 'force-dynamic'
 
 export default async function WordsPage() {
   await requireAuth()
-  const [words, packs] = await Promise.all([listWords(), listPacks()])
+  const [words, packs, { dueByKey, seenKeys }] = await Promise.all([
+    listWords(),
+    listPacks(),
+    loadDueSnapshot(),
+  ])
+
+  const seen = new Set(seenKeys)
+  const due = words.reduce((total, word) => {
+    for (const direction of DIRECTIONS) {
+      const key = cardKey('word', word.id, direction)
+      if (!seen.has(key) || dueByKey[key]) total++
+    }
+    return total
+  }, 0)
+
+  const allPacks = [...new Set(words.map((word) => packGroupId(word.pack)))]
+  const practiseHref = `/drill?groups=${encodeURIComponent(allPacks.join(','))}&dirs=recognise,produce`
 
   return (
     <main className="flex-1 px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-medium">Words</h1>
-        <div className="flex gap-3 text-sm text-muted">
-          <Link href="/generate" className="underline underline-offset-4">
-            Generate
-          </Link>
-          <Link href="/capture" className="underline underline-offset-4">
-            Photograph
-          </Link>
-          <Link href="/words/practice" className="underline underline-offset-4">
-            Practise
-          </Link>
-        </div>
-      </header>
+      {words.length > 0 ? (
+        <>
+          <PractiseCta href={practiseHref} due={due} label="Practise words" />
+          <div className="mt-3 flex justify-center">
+            <Link
+              href="/words/practice"
+              className="text-xs text-muted underline underline-offset-4"
+            >
+              choose packs or direction
+            </Link>
+          </div>
+        </>
+      ) : null}
 
-      <AddWordForm packs={packs} />
+      <div className="mt-8 flex gap-2">
+        <Link
+          href="/capture"
+          className="flex-1 rounded-xl border border-edge py-3 text-center text-sm"
+        >
+          Photograph
+        </Link>
+        <Link
+          href="/generate"
+          className="flex-1 rounded-xl border border-edge py-3 text-center text-sm"
+        >
+          Generate
+        </Link>
+      </div>
+
+      <details className="mt-3">
+        <summary className="cursor-pointer rounded-xl border border-edge py-3 text-center text-sm">
+          Add one by hand
+        </summary>
+        <AddWordForm packs={packs} />
+      </details>
 
       <p className="mt-8 text-xs uppercase tracking-widest text-muted">
         {words.length} word{words.length === 1 ? '' : 's'}

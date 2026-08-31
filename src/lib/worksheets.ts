@@ -2,16 +2,21 @@ import { desc, eq, sql } from 'drizzle-orm'
 
 import { getDb, schema } from './db'
 import type { ExtractedWord } from './db/schema'
-import { extractWords, isSafeToAdd, verifyItems } from './extract'
+import { dedupe, extractWords, isSafeToAdd, sortForReview, verifyItems } from './extract'
 import { addWords } from './words'
 
 /**
- * Photographed pages, read in the background.
+ * Photographed pages, read one page per request.
  *
- * Pages upload one request at a time (a batch in a single request blows past
- * the body limit), then extraction and verification run detached — you can
- * close the tab the moment the last page is up.
+ * A whole batch in one invocation runs past the serverless function timeout
+ * and is killed with nothing recorded, so a job would sit in "extracting"
+ * forever. Each step now reads a single page, saves what it found, and hands
+ * off to the next — so no request is ever long, and progress survives a
+ * killed function.
  */
+
+/** A step is considered dead if it has made no progress in this long. */
+export const STALL_MS = 3 * 60 * 1000
 
 export async function createWorksheet(pack: string | null): Promise<string> {
   const [row] = await getDb()
@@ -21,7 +26,6 @@ export async function createWorksheet(pack: string | null): Promise<string> {
   return row.id
 }
 
-/** Appends one page. Small requests keep every upload well under the limit. */
 export async function appendPage(worksheetId: string, image: string): Promise<number> {
   const [row] = await getDb()
     .update(schema.worksheets)
@@ -31,35 +35,59 @@ export async function appendPage(worksheetId: string, image: string): Promise<nu
   return row?.images.length ?? 0
 }
 
+export type StepResult = { done: boolean; status: string }
+
 /**
- * Reads the batch, checks it, and files everything that passes.
+ * Does the next unit of work and returns whether more remains.
  *
- * Runs detached — nothing awaits this — so the outcome has to be recorded on
- * the row rather than returned.
+ * Never throws for expected failures — the outcome goes on the row, because
+ * the caller is a fire-and-forget request nobody is reading the response of.
  */
-export async function processWorksheet(worksheetId: string): Promise<void> {
+export async function runStep(worksheetId: string): Promise<StepResult> {
   const db = getDb()
 
   try {
     const sheet = await getWorksheet(worksheetId)
-    if (!sheet) return
+    if (!sheet) return { done: true, status: 'missing' }
+    if (sheet.status === 'ready' || sheet.status === 'reviewed' || sheet.status === 'failed') {
+      return { done: true, status: sheet.status }
+    }
 
+    const pages = sheet.images.length
+    if (pages === 0) {
+      await fail(worksheetId, 'No pages were uploaded.')
+      return { done: true, status: 'failed' }
+    }
+
+    // Still pages to read: do exactly one.
+    if (sheet.pagesDone < pages) {
+      const index = sheet.pagesDone
+      const found = await extractWords([sheet.images[index]])
+      const merged = dedupe([...(sheet.extracted ?? []), ...found])
+
+      await db
+        .update(schema.worksheets)
+        .set({
+          status: 'extracting',
+          extracted: merged,
+          pagesDone: index + 1,
+          stepAt: new Date(),
+          error: null,
+        })
+        .where(eq(schema.worksheets.id, worksheetId))
+
+      return { done: false, status: 'extracting' }
+    }
+
+    // All pages read — check the findings, then file what passes.
     await db
       .update(schema.worksheets)
-      .set({ status: 'extracting' })
+      .set({ status: 'verifying', stepAt: new Date() })
       .where(eq(schema.worksheets.id, worksheetId))
 
-    const extracted = await extractWords(sheet.images)
-
-    await db
-      .update(schema.worksheets)
-      .set({ status: 'verifying', extracted })
-      .where(eq(schema.worksheets.id, worksheetId))
-
-    const checked = await verifyItems(extracted)
-
-    // File what passed; hold the rest for a look.
+    const checked = await verifyItems(sortForReview(sheet.extracted ?? []))
     const safe = checked.filter(isSafeToAdd)
+
     if (safe.length > 0) {
       await addWords(
         safe.map((item) => ({
@@ -84,18 +112,23 @@ export async function processWorksheet(worksheetId: string): Promise<void> {
         status: held > 0 ? 'ready' : 'reviewed',
         extracted: marked,
         autoAdded: safe.length,
+        stepAt: new Date(),
         error: null,
       })
       .where(eq(schema.worksheets.id, worksheetId))
+
+    return { done: true, status: held > 0 ? 'ready' : 'reviewed' }
   } catch (error) {
-    await db
-      .update(schema.worksheets)
-      .set({
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Extraction failed',
-      })
-      .where(eq(schema.worksheets.id, worksheetId))
+    await fail(worksheetId, error instanceof Error ? error.message : 'Extraction failed')
+    return { done: true, status: 'failed' }
   }
+}
+
+async function fail(worksheetId: string, message: string): Promise<void> {
+  await getDb()
+    .update(schema.worksheets)
+    .set({ status: 'failed', error: message.slice(0, 300), stepAt: new Date() })
+    .where(eq(schema.worksheets.id, worksheetId))
 }
 
 export async function getWorksheet(id: string) {
@@ -112,9 +145,28 @@ export async function listWorksheets() {
       extracted: schema.worksheets.extracted,
       pack: schema.worksheets.pack,
       autoAdded: schema.worksheets.autoAdded,
+      pagesDone: schema.worksheets.pagesDone,
+      images: schema.worksheets.images,
+      stepAt: schema.worksheets.stepAt,
+      error: schema.worksheets.error,
     })
     .from(schema.worksheets)
     .orderBy(desc(schema.worksheets.createdAt))
+}
+
+/** Jobs still working, for the running-in-the-background indicator. */
+export async function activeWorksheets() {
+  const all = await listWorksheets()
+  return all
+    .filter((sheet) => ['uploading', 'extracting', 'verifying'].includes(sheet.status))
+    .map((sheet) => ({
+      id: sheet.id,
+      status: sheet.status,
+      pagesDone: sheet.pagesDone,
+      pages: sheet.images.length,
+      // A job whose step died leaves no error behind, so infer it from the clock.
+      stalled: sheet.stepAt ? Date.now() - sheet.stepAt.getTime() > STALL_MS : false,
+    }))
 }
 
 export async function markReviewed(id: string): Promise<void> {

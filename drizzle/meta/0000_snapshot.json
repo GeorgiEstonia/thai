@@ -1,5 +1,5 @@
 {
-  "id": "336359ad-134a-4855-9356-b030154b2a94",
+  "id": "d27277e8-e66b-4edb-b211-13aa91b33eef",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -306,6 +306,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "pages_done": {
+          "name": "pages_done",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "step_at": {
+          "name": "step_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "extracted": {
           "name": "extracted",

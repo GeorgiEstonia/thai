@@ -8,8 +8,10 @@ import { usePathname } from 'next/navigation'
  * are different kinds of study and mixing their controls on one screen made
  * both harder to scan.
  */
+// /drill and /progress serve both kinds of material, so neither tab claims
+// them — highlighting "Characters" while drilling words is just wrong.
 const TABS = [
-  { href: '/practice', label: 'Characters', match: ['/practice', '/drill', '/progress'] },
+  { href: '/practice', label: 'Characters', match: ['/practice'] },
   { href: '/words', label: 'Words', match: ['/words', '/capture', '/generate'] },
 ] as const
 

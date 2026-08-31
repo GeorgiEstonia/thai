@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Itim, Noto_Sans_Thai, Noto_Serif_Thai, Sarabun } from 'next/font/google'
 
+import JobIndicator from '@/components/JobIndicator'
 import Nav from '@/components/Nav'
 
 import './globals.css'
@@ -65,6 +66,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     >
       <body className="min-h-full flex flex-col">
         <Nav />
+        <JobIndicator />
         {children}
       </body>
     </html>

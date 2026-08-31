@@ -106,6 +106,14 @@ export const worksheets = pgTable('worksheets', {
     .default('uploading'),
   /** How many items were verified and filed automatically. */
   autoAdded: integer('auto_added').notNull().default(0),
+  /**
+   * How many pages have been read so far. Extraction runs one page per
+   * request — a whole batch in a single invocation gets killed by the
+   * platform's function timeout, leaving the job stuck with no error.
+   */
+  pagesDone: integer('pages_done').notNull().default(0),
+  /** Last time a step made progress, so a stalled job can be spotted. */
+  stepAt: timestamp('step_at', { withTimezone: true, mode: 'date' }),
   extracted: jsonb('extracted').$type<ExtractedWord[]>(),
   error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })

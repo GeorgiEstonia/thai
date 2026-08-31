@@ -76,10 +76,21 @@ export default function ReviewClient({
 
   if (status === 'uploading' || status === 'extracting' || status === 'verifying') {
     return (
-      <p className="mt-8 text-sm text-muted">
-        {status === 'verifying' ? 'Checking what was found…' : 'Reading the pages…'} You can
-        leave this page; it carries on without you.
-      </p>
+      <div className="mt-8">
+        <p className="text-sm text-muted">
+          {status === 'verifying' ? 'Checking what was found…' : 'Reading the pages…'} You can
+          leave this page and carry on practising; it keeps going without you.
+        </p>
+        <button
+          onClick={() => {
+            void fetch(`/api/worksheets/${worksheetId}/step`, { method: 'POST' })
+            setTimeout(() => router.refresh(), 1500)
+          }}
+          className="mt-4 rounded-xl border border-edge px-4 py-2 text-xs text-muted"
+        >
+          Nudge it along
+        </button>
+      </div>
     )
   }
 
@@ -87,6 +98,15 @@ export default function ReviewClient({
     return (
       <div className="mt-8">
         <p className="text-sm text-class-high">{error ?? 'Extraction failed.'}</p>
+        <button
+          onClick={() => {
+            void fetch(`/api/worksheets/${worksheetId}/step`, { method: 'POST' })
+            setTimeout(() => router.refresh(), 1500)
+          }}
+          className="mt-3 rounded-xl border border-edge px-4 py-2 text-xs"
+        >
+          Try again
+        </button>
         <p className="mt-2 text-sm text-muted">
           If this says the API key is missing, add ANTHROPIC_API_KEY to .env.local and try
           again.

@@ -8,6 +8,9 @@ import { useState } from 'react'
 const MAX_EDGE = 1800
 const MAX_PAGES = 20
 
+/** A page that fails to upload is retried this many times before giving up. */
+const UPLOAD_RETRIES = 2
+
 async function downscale(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
@@ -45,22 +48,45 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
       if (!created.ok) throw new Error('could not start')
       const { id } = (await created.json()) as { id: string }
 
-      // One page per request — a whole batch in one body is what used to fail.
+      // One page per request — a whole batch in one body exceeds the limit.
+      let uploaded = 0
+      const failed: number[] = []
+
       for (const [index, file] of files.entries()) {
         const image = await downscale(file)
-        const response = await fetch(`/api/worksheets/${id}/pages`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ image }),
-        })
-        if (!response.ok) throw new Error(`page ${index + 1} failed`)
+        let ok = false
+
+        for (let attempt = 0; attempt <= UPLOAD_RETRIES && !ok; attempt++) {
+          try {
+            const response = await fetch(`/api/worksheets/${id}/pages`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ image }),
+            })
+            ok = response.ok
+          } catch {
+            ok = false
+          }
+          if (!ok) await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)))
+        }
+
+        if (ok) uploaded++
+        else failed.push(index + 1)
         setProgress({ done: index + 1, total: files.length })
       }
 
-      // Reading and checking happen server-side; you don't have to stay here.
+      // Start with whatever made it. Previously one bad page threw here and
+      // the batch was left sitting in "uploading" forever, unreadable and
+      // unrecoverable.
+      if (uploaded === 0) throw new Error('no pages uploaded')
       await fetch(`/api/worksheets/${id}/start`, { method: 'POST' })
 
       setProgress(null)
+      if (failed.length > 0) {
+        setError(
+          `Page${failed.length === 1 ? '' : 's'} ${failed.join(', ')} did not upload; reading the other ${uploaded}.`,
+        )
+      }
       router.refresh()
     } catch {
       setError('Upload failed. Try again, or with fewer pages.')
@@ -108,7 +134,9 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
         <span className="mt-2 text-muted">
           {busy ? `Uploading ${progress.done}/${progress.total}…` : 'Choose or photograph pages'}
         </span>
-        <span className="mt-1 text-xs text-muted">up to {MAX_PAGES} at once</span>
+        <span className="mt-1 text-xs text-muted">
+          up to {MAX_PAGES} pages · about 20s each
+        </span>
       </label>
 
       {error ? (

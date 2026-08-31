@@ -291,12 +291,19 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
       <Card revealed={revealed} onReveal={() => setRevealed(true)}>
         {/* FRONT — what you're being asked. */}
         {direction === 'recognise' ? (
-          <span
-            className={`${thaiClass} select-none leading-none ${
-              item.type === 'word' ? (revealed ? 'text-4xl' : 'text-6xl') : revealed ? 'text-7xl' : 'text-[9rem]'
-            }`}
-          >
-            {item.thai}
+          <span className="flex flex-col items-center">
+            <span
+              className={`${thaiClass} select-none leading-none ${
+                item.type === 'word' ? (revealed ? 'text-4xl' : 'text-6xl') : revealed ? 'text-7xl' : 'text-[9rem]'
+              }`}
+            >
+              {item.thai}
+            </span>
+            {/* The script is still being learned, so a word card shows how it
+                sounds too — otherwise it is unreadable rather than difficult. */}
+            {item.type === 'word' && item.ipa ? (
+              <span className="mt-3 font-mono text-lg text-muted">/{item.ipa}/</span>
+            ) : null}
           </span>
         ) : item.type === 'word' ? (
           <span className="px-4 text-3xl leading-snug">{item.word.english}</span>

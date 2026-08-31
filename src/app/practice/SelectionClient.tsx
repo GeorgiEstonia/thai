@@ -114,16 +114,16 @@ export default function SelectionClient({ dueByKey, seenKeys }: Props) {
   }
 
   return (
-    <main className="flex-1 px-5 py-6 max-w-md w-full mx-auto">
+    <main className="flex-1 px-5 pb-6 pt-8 max-w-md w-full mx-auto">
       <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-medium">This session</h1>
+        <h1 className="text-lg font-medium">Or pick sounds</h1>
         <Link href="/progress" className="text-sm text-muted underline underline-offset-4">
           Progress
         </Link>
       </header>
       <p className="mt-2 text-sm text-muted">
-        Pick the sounds you&rsquo;re working on. The number is how many cards are waiting;
-        a tick means nothing is due.
+        For working on something specific. The number is how many cards are waiting; a tick
+        means nothing is due.
       </p>
 
       <section className="mt-6">

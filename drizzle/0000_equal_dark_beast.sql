@@ -49,6 +49,8 @@ CREATE TABLE "worksheets" (
 	"pack" text,
 	"status" text DEFAULT 'uploading' NOT NULL,
 	"auto_added" integer DEFAULT 0 NOT NULL,
+	"pages_done" integer DEFAULT 0 NOT NULL,
+	"step_at" timestamp with time zone,
 	"extracted" jsonb,
 	"error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
