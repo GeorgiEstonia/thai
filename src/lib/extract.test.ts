@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ExtractedWord } from './db/schema'
-import { dedupe, parseDataUrl, sortForReview } from './extract'
+import { dedupe, parseDataUrl, phraseCount, sortForReview } from './extract'
 
 function word(
   thai: string,
@@ -73,5 +73,30 @@ describe('dedupe', () => {
 
   it('ignores surrounding whitespace when comparing', () => {
     expect(dedupe([word('คน', 'high'), word('  คน  ', 'high')])).toHaveLength(1)
+  })
+})
+
+describe('phraseCount', () => {
+  it('writes nothing for a page with almost no vocabulary', () => {
+    expect(phraseCount(0)).toBe(0)
+    expect(phraseCount(3)).toBe(0)
+  })
+
+  it('writes a handful for a normal page', () => {
+    expect(phraseCount(10)).toBe(3)
+    expect(phraseCount(24)).toBe(4)
+  })
+
+  it('stays a handful even for a whole chapter', () => {
+    // The point is a few patterns to practise, not a transcript of the book.
+    expect(phraseCount(200)).toBe(6)
+    expect(phraseCount(1000)).toBe(6)
+  })
+
+  it('never exceeds the vocabulary it has to work with', () => {
+    for (const words of [4, 8, 15, 40, 90]) {
+      expect(phraseCount(words)).toBeLessThanOrEqual(6)
+      expect(phraseCount(words)).toBeGreaterThanOrEqual(3)
+    }
   })
 })

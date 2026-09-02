@@ -2,7 +2,14 @@ import { desc, eq, sql } from 'drizzle-orm'
 
 import { getDb, schema } from './db'
 import type { ExtractedWord } from './db/schema'
-import { dedupe, extractWords, isSafeToAdd, sortForReview, verifyItems } from './extract'
+import {
+  composePhrases,
+  dedupe,
+  extractWords,
+  isSafeToAdd,
+  sortForReview,
+  verifyItems,
+} from './extract'
 import { addWords } from './words'
 
 /**
@@ -79,13 +86,18 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
       return { done: false, status: 'extracting' }
     }
 
-    // All pages read — check the findings, then file what passes.
+    // All pages read. Write a few sentences that put the new words to work,
+    // then check everything before it is filed. Sentences are composed rather
+    // than transcribed: a chapter's worth of textbook dialogue buries the
+    // vocabulary, and a handful of patterns is what actually gets practised.
     await db
       .update(schema.worksheets)
       .set({ status: 'verifying', stepAt: new Date() })
       .where(eq(schema.worksheets.id, worksheetId))
 
-    const checked = await verifyItems(sortForReview(sheet.extracted ?? []))
+    const words = (sheet.extracted ?? []).filter((item) => item.kind === 'word')
+    const phrases = await composePhrases(words)
+    const checked = await verifyItems(sortForReview([...words, ...phrases]))
     const safe = checked.filter(isSafeToAdd)
 
     if (safe.length > 0) {
