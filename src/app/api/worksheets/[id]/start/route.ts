@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions'
 import { NextResponse } from 'next/server'
 
 import { isAuthenticated } from '@/lib/auth'
@@ -17,8 +18,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   step.pathname = step.pathname.replace(/\/start$/, '/step')
   step.searchParams.set('t', signStep(id))
 
-  // Not awaited: the chain runs on its own from here.
-  fetch(step.toString(), { method: 'POST' }).catch(() => {})
+  // waitUntil is what actually gets this request out of the door. Without it
+  // the floating fetch is killed the instant this response returns, the chain
+  // never starts, and the batch sits in "uploading" forever — which is exactly
+  // what happened to every large import.
+  const kick = fetch(step.toString(), { method: 'POST' }).catch(() => {})
+  try {
+    waitUntil(kick)
+  } catch {
+    // Not on Vercel — the request is already in flight.
+  }
 
   return NextResponse.json({ started: true })
 }

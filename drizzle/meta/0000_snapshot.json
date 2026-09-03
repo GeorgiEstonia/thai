@@ -1,5 +1,5 @@
 {
-  "id": "d27277e8-e66b-4edb-b211-13aa91b33eef",
+  "id": "ad48a9e8-5930-44a3-b8b5-4fa0a6722b49",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -270,6 +270,59 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.worksheet_pages": {
+      "name": "worksheet_pages",
+      "schema": "",
+      "columns": {
+        "worksheet_id": {
+          "name": "worksheet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "index": {
+          "name": "index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "worksheet_pages_worksheet_id_worksheets_id_fk": {
+          "name": "worksheet_pages_worksheet_id_worksheets_id_fk",
+          "tableFrom": "worksheet_pages",
+          "tableTo": "worksheets",
+          "columnsFrom": [
+            "worksheet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "worksheet_pages_worksheet_id_index_pk": {
+          "name": "worksheet_pages_worksheet_id_index_pk",
+          "columns": [
+            "worksheet_id",
+            "index"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.worksheets": {
       "name": "worksheets",
       "schema": "",
@@ -281,11 +334,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "images": {
-          "name": "images",
-          "type": "jsonb",
+        "page_count": {
+          "name": "page_count",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": 0
         },
         "pack": {
           "name": "pack",
