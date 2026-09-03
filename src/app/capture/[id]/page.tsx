@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { requireAuth } from '@/lib/auth'
-import { getWorksheet } from '@/lib/worksheets'
+import { getWorksheet, loadPages } from '@/lib/worksheets'
 
 import ReviewClient from './ReviewClient'
 
@@ -14,6 +14,8 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
   const { id } = await params
   const worksheet = await getWorksheet(id)
   if (!worksheet) notFound()
+
+  const images = await loadPages(id)
 
   return (
     <main className="flex-1 px-5 py-6 max-w-md w-full mx-auto">
@@ -28,7 +30,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         key={`${worksheet.status}:${worksheet.extracted?.length ?? 0}`}
         worksheetId={worksheet.id}
         status={worksheet.status}
-        images={worksheet.images}
+        images={images}
         pack={worksheet.pack}
         autoAdded={worksheet.autoAdded}
         extracted={worksheet.extracted ?? []}

@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 
 import { getDb, schema } from './db'
 import type { ExtractedWord } from './db/schema'
@@ -23,23 +23,54 @@ import { addWords } from './words'
  */
 
 /** A step is considered dead if it has made no progress in this long. */
-export const STALL_MS = 3 * 60 * 1000
+export const STALL_MS = 90 * 1000
 
 export async function createWorksheet(pack: string | null): Promise<string> {
   const [row] = await getDb()
     .insert(schema.worksheets)
-    .values({ images: [], pack, status: 'uploading' })
+    .values({ pack, status: 'uploading' })
     .returning({ id: schema.worksheets.id })
   return row.id
 }
 
+/** Stores one page and returns how many the batch now has. */
 export async function appendPage(worksheetId: string, image: string): Promise<number> {
+  const db = getDb()
+
+  return db.transaction(async (tx) => {
+    const [sheet] = await tx
+      .update(schema.worksheets)
+      .set({ pageCount: sql`${schema.worksheets.pageCount} + 1` })
+      .where(eq(schema.worksheets.id, worksheetId))
+      .returning({ pageCount: schema.worksheets.pageCount })
+
+    const index = (sheet?.pageCount ?? 1) - 1
+    await tx.insert(schema.worksheetPages).values({ worksheetId, index, image })
+    return index + 1
+  })
+}
+
+/** Loads a single page — a step never needs the rest of the batch. */
+async function loadPage(worksheetId: string, index: number): Promise<string | null> {
   const [row] = await getDb()
-    .update(schema.worksheets)
-    .set({ images: sql`${schema.worksheets.images} || ${JSON.stringify([image])}::jsonb` })
-    .where(eq(schema.worksheets.id, worksheetId))
-    .returning({ images: schema.worksheets.images })
-  return row?.images.length ?? 0
+    .select({ image: schema.worksheetPages.image })
+    .from(schema.worksheetPages)
+    .where(
+      and(
+        eq(schema.worksheetPages.worksheetId, worksheetId),
+        eq(schema.worksheetPages.index, index),
+      ),
+    )
+  return row?.image ?? null
+}
+
+export async function loadPages(worksheetId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ image: schema.worksheetPages.image })
+    .from(schema.worksheetPages)
+    .where(eq(schema.worksheetPages.worksheetId, worksheetId))
+    .orderBy(asc(schema.worksheetPages.index))
+  return rows.map((row) => row.image)
 }
 
 export type StepResult = { done: boolean; status: string }
@@ -60,7 +91,7 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
       return { done: true, status: sheet.status }
     }
 
-    const pages = sheet.images.length
+    const pages = sheet.pageCount
     if (pages === 0) {
       await fail(worksheetId, 'No pages were uploaded.')
       return { done: true, status: 'failed' }
@@ -69,7 +100,16 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
     // Still pages to read: do exactly one.
     if (sheet.pagesDone < pages) {
       const index = sheet.pagesDone
-      const found = await extractWords([sheet.images[index]])
+      const image = await loadPage(worksheetId, index)
+      if (!image) {
+        // The page never landed. Skip it rather than wedging the whole batch.
+        await db
+          .update(schema.worksheets)
+          .set({ pagesDone: index + 1, stepAt: new Date() })
+          .where(eq(schema.worksheets.id, worksheetId))
+        return { done: false, status: 'extracting' }
+      }
+      const found = await extractWords([image])
       const merged = dedupe([...(sheet.extracted ?? []), ...found])
 
       await db
@@ -158,7 +198,7 @@ export async function listWorksheets() {
       pack: schema.worksheets.pack,
       autoAdded: schema.worksheets.autoAdded,
       pagesDone: schema.worksheets.pagesDone,
-      images: schema.worksheets.images,
+      pageCount: schema.worksheets.pageCount,
       stepAt: schema.worksheets.stepAt,
       error: schema.worksheets.error,
     })
@@ -175,12 +215,37 @@ export async function activeWorksheets() {
       id: sheet.id,
       status: sheet.status,
       pagesDone: sheet.pagesDone,
-      pages: sheet.images.length,
+      pages: sheet.pageCount,
       // A job whose step died leaves no error behind, so infer it from the
       // clock. A null stepAt means no step ever ran — which is itself a stall
       // once the job is no longer fresh, not a reason to wait forever.
       stalled: Date.now() - (sheet.stepAt ?? sheet.createdAt).getTime() > STALL_MS,
     }))
+}
+
+/**
+ * Restarts anything that has gone quiet.
+ *
+ * The chain is a sequence of fire-and-forget requests, and any one of them can
+ * be lost — a cold start, a dropped connection, a killed function. Rather than
+ * trusting every link, the app re-kicks stalled jobs whenever it checks on
+ * them, which makes a lost link a delay instead of a dead import.
+ */
+export async function reviveStalled(
+  origin: string,
+  sign: (id: string) => string,
+): Promise<string[]> {
+  const stalled = (await activeWorksheets()).filter((job) => job.stalled)
+
+  await Promise.all(
+    stalled.map((job) =>
+      fetch(`${origin}/api/worksheets/${job.id}/step?t=${sign(job.id)}`, {
+        method: 'POST',
+      }).catch(() => {}),
+    ),
+  )
+
+  return stalled.map((job) => job.id)
 }
 
 export async function markReviewed(id: string): Promise<void> {

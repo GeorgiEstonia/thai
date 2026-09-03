@@ -95,8 +95,12 @@ export const itemNotes = pgTable(
  */
 export const worksheets = pgTable('worksheets', {
   id: uuid('id').primaryKey().defaultRandom(),
-  /** The captured pages, as data URLs. A batch is read in one request. */
-  images: jsonb('images').$type<string[]>().notNull(),
+  /**
+   * How many pages were uploaded. The images themselves live in their own
+   * table: keeping them here meant every step re-read the whole batch, so a
+   * twenty-page import moved hundreds of megabytes to read twenty pages.
+   */
+  pageCount: integer('page_count').notNull().default(0),
   /** Pack every approved item from this batch is filed under. */
   pack: text('pack'),
   status: text('status', {
@@ -120,6 +124,22 @@ export const worksheets = pgTable('worksheets', {
     .notNull()
     .defaultNow(),
 })
+
+/**
+ * One photographed page, stored on its own so a step can load just the page
+ * it is about to read.
+ */
+export const worksheetPages = pgTable(
+  'worksheet_pages',
+  {
+    worksheetId: uuid('worksheet_id')
+      .notNull()
+      .references(() => worksheets.id, { onDelete: 'cascade' }),
+    index: integer('index').notNull(),
+    image: text('image').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.worksheetId, table.index] })],
+)
 
 export interface ExtractedWord {
   thai: string

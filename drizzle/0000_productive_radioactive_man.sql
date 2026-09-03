@@ -43,9 +43,16 @@ CREATE TABLE "words" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "worksheet_pages" (
+	"worksheet_id" uuid NOT NULL,
+	"index" integer NOT NULL,
+	"image" text NOT NULL,
+	CONSTRAINT "worksheet_pages_worksheet_id_index_pk" PRIMARY KEY("worksheet_id","index")
+);
+--> statement-breakpoint
 CREATE TABLE "worksheets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"images" jsonb NOT NULL,
+	"page_count" integer DEFAULT 0 NOT NULL,
 	"pack" text,
 	"status" text DEFAULT 'uploading' NOT NULL,
 	"auto_added" integer DEFAULT 0 NOT NULL,
@@ -55,3 +62,5 @@ CREATE TABLE "worksheets" (
 	"error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
+--> statement-breakpoint
+ALTER TABLE "worksheet_pages" ADD CONSTRAINT "worksheet_pages_worksheet_id_worksheets_id_fk" FOREIGN KEY ("worksheet_id") REFERENCES "public"."worksheets"("id") ON DELETE cascade ON UPDATE no action;

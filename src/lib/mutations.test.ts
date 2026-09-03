@@ -46,7 +46,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
-  await client.exec('truncate item_progress, review_log, item_notes, words, worksheets')
+  await client.exec('truncate item_progress, review_log, item_notes, words, worksheets cascade')
 })
 
 afterAll(async () => {

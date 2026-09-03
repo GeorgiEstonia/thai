@@ -9,7 +9,11 @@ const MAX_EDGE = 1800
 const MAX_PAGES = 20
 
 /** A page that fails to upload is retried this many times before giving up. */
-const UPLOAD_RETRIES = 2
+const UPLOAD_RETRIES = 3
+
+/** Pages uploaded at once. Small enough that each body stays well under any
+ *  request limit, large enough that twenty pages don't crawl. */
+const UPLOAD_CONCURRENCY = 3
 
 async function downscale(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file)
@@ -32,6 +36,24 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  async function uploadOne(worksheetId: string, file: File): Promise<boolean> {
+    for (let attempt = 0; attempt <= UPLOAD_RETRIES; attempt++) {
+      try {
+        const image = await downscale(file)
+        const response = await fetch(`/api/worksheets/${worksheetId}/pages`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ image }),
+        })
+        if (response.ok) return true
+      } catch {
+        // Network hiccup; fall through to the backoff and try again.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)))
+    }
+    return false
+  }
+
   async function handleFiles(fileList: FileList | null) {
     const files = [...(fileList ?? [])].slice(0, MAX_PAGES)
     if (files.length === 0) return
@@ -48,48 +70,36 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
       if (!created.ok) throw new Error('could not start')
       const { id } = (await created.json()) as { id: string }
 
-      // One page per request — a whole batch in one body exceeds the limit.
-      let uploaded = 0
+      // A few at a time: one page per request keeps each body small, but
+      // uploading twenty strictly one after another is needlessly slow.
+      let done = 0
       const failed: number[] = []
 
-      for (const [index, file] of files.entries()) {
-        const image = await downscale(file)
-        let ok = false
+      for (let start = 0; start < files.length; start += UPLOAD_CONCURRENCY) {
+        const slice = files.slice(start, start + UPLOAD_CONCURRENCY)
+        const results = await Promise.all(slice.map((file) => uploadOne(id, file)))
 
-        for (let attempt = 0; attempt <= UPLOAD_RETRIES && !ok; attempt++) {
-          try {
-            const response = await fetch(`/api/worksheets/${id}/pages`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ image }),
-            })
-            ok = response.ok
-          } catch {
-            ok = false
-          }
-          if (!ok) await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)))
-        }
-
-        if (ok) uploaded++
-        else failed.push(index + 1)
-        setProgress({ done: index + 1, total: files.length })
+        results.forEach((ok, offset) => {
+          if (!ok) failed.push(start + offset + 1)
+        })
+        done += slice.length
+        setProgress({ done, total: files.length })
       }
 
-      // Start with whatever made it. Previously one bad page threw here and
-      // the batch was left sitting in "uploading" forever, unreadable and
-      // unrecoverable.
+      const uploaded = files.length - failed.length
       if (uploaded === 0) throw new Error('no pages uploaded')
+
       await fetch(`/api/worksheets/${id}/start`, { method: 'POST' })
 
       setProgress(null)
       if (failed.length > 0) {
         setError(
-          `Page${failed.length === 1 ? '' : 's'} ${failed.join(', ')} did not upload; reading the other ${uploaded}.`,
+          `Page${failed.length === 1 ? '' : 's'} ${failed.join(', ')} did not upload. Reading the other ${uploaded} — add the rest as a second batch.`,
         )
       }
       router.refresh()
     } catch {
-      setError('Upload failed. Try again, or with fewer pages.')
+      setError('Upload failed. Check your connection and try again.')
       setProgress(null)
     }
   }
