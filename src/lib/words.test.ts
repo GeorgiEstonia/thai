@@ -9,11 +9,13 @@ import { __setTestDb, getDb, schema } from './db'
 import { selectedItems } from './practice'
 import {
   addWords,
+  countDuplicateWords,
   deleteWord,
   listPacks,
   listWordItems,
   listWords,
   loadNotes,
+  removeDuplicateWords,
   saveNote,
 } from './words'
 
@@ -184,5 +186,128 @@ describe('selecting a pack', () => {
 
     const picked = await selectedItems({ groups: ['k'], directions: ['recognise'] })
     expect(picked.every((item) => item.type === 'character')).toBe(true)
+  })
+})
+
+/**
+ * The bug these cover: extraction deduplicated within one batch but nothing
+ * checked a batch against the deck, so every import re-added the vocabulary
+ * the previous import had already filed. A handful of lessons produced 1,821
+ * rows holding 208 distinct items — a deck too big to get through even once.
+ */
+describe('duplicate vocabulary', () => {
+  const KIN = { thai: 'กิน', ipa: 'gin', english: 'to eat', source: 'worksheet' as const }
+
+  it('does not add a word the deck already has', async () => {
+    await addWords([KIN])
+    const second = await addWords([KIN])
+
+    expect(second).toEqual([])
+    expect(await listWords()).toHaveLength(1)
+  })
+
+  it('does not add the same word twice within one batch', async () => {
+    await addWords([KIN, { ...KIN, english: 'eat' }])
+    expect(await listWords()).toHaveLength(1)
+  })
+
+  it('treats a word and a phrase written the same way as different items', async () => {
+    await addWords([KIN, { ...KIN, kind: 'phrase' }])
+    expect(await listWords()).toHaveLength(2)
+  })
+
+  it('still adds everything that is genuinely new', async () => {
+    await addWords([KIN])
+    const added = await addWords([
+      KIN,
+      { thai: 'ข้าว', ipa: 'kâaw', english: 'rice', source: 'worksheet' },
+    ])
+
+    expect(added).toHaveLength(1)
+    expect(await listWords()).toHaveLength(2)
+  })
+
+  it('counts the rows a deck holds more than once', async () => {
+    // Written straight to the table, since addWords now refuses to create them.
+    await db.insert(schema.words).values([
+      { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      { thai: 'ข้าว', ipa: '', english: 'rice', kind: 'word', source: 'worksheet' },
+    ])
+
+    expect(await countDuplicateWords()).toBe(2)
+  })
+
+  it('collapses duplicates down to one row each', async () => {
+    await db.insert(schema.words).values([
+      { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      { thai: 'ข้าว', ipa: '', english: 'rice', kind: 'word', source: 'worksheet' },
+    ])
+
+    const { removed } = await removeDuplicateWords()
+
+    expect(removed).toBe(1)
+    expect(await listWords()).toHaveLength(2)
+    expect(await countDuplicateWords()).toBe(0)
+  })
+
+  it('keeps the copy that has actually been practised', async () => {
+    const rows = await db
+      .insert(schema.words)
+      .values([
+        { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+        { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      ])
+      .returning({ id: schema.words.id })
+
+    // The SECOND row is the practised one, so keeping the oldest would be wrong.
+    const practised = rows[1].id
+    await db.insert(schema.itemProgress).values({
+      itemType: 'word',
+      itemId: practised,
+      direction: 'recognise',
+      intervalDays: 8,
+      reps: 4,
+    })
+
+    await removeDuplicateWords()
+
+    const left = await listWords()
+    expect(left).toHaveLength(1)
+    expect(left[0].id).toBe(practised)
+  })
+
+  it('takes the schedule of a removed copy away with it', async () => {
+    const rows = await db
+      .insert(schema.words)
+      .values([
+        { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+        { thai: 'กิน', ipa: '', english: 'to eat', kind: 'word', source: 'worksheet' },
+      ])
+      .returning({ id: schema.words.id })
+
+    for (const row of rows) {
+      await db.insert(schema.itemProgress).values({
+        itemType: 'word',
+        itemId: row.id,
+        direction: 'recognise',
+        reps: 1,
+      })
+    }
+
+    await removeDuplicateWords()
+
+    // Progress rows for words that no longer exist would be counted forever.
+    const progress = await db.select().from(schema.itemProgress)
+    expect(progress).toHaveLength(1)
+  })
+
+  it('does nothing to a deck that is already clean', async () => {
+    await addWords([KIN, { thai: 'ข้าว', ipa: '', english: 'rice', source: 'worksheet' }])
+
+    expect(await removeDuplicateWords()).toEqual({ removed: 0, kept: 2 })
+    expect(await listWords()).toHaveLength(2)
   })
 })

@@ -4,19 +4,21 @@ import { DIRECTIONS, cardKey, packGroupId } from '@/content/items'
 import PractiseCta from '@/components/PractiseCta'
 import { requireAuth } from '@/lib/auth'
 import { loadDueSnapshot } from '@/lib/practice'
-import { listPacks, listWords } from '@/lib/words'
+import { countDuplicateWords, listPacks, listWords } from '@/lib/words'
 
 import AddWordForm from './AddWordForm'
+import TidyDuplicates from './TidyDuplicates'
 import WordRow from './WordRow'
 
 export const dynamic = 'force-dynamic'
 
 export default async function WordsPage() {
   await requireAuth()
-  const [words, packs, { dueByKey, seenKeys }] = await Promise.all([
+  const [words, packs, { dueByKey, seenKeys }, duplicates] = await Promise.all([
     listWords(),
     listPacks(),
     loadDueSnapshot(),
+    countDuplicateWords(),
   ])
 
   const seen = new Set(seenKeys)
@@ -46,6 +48,8 @@ export default async function WordsPage() {
           </div>
         </>
       ) : null}
+
+      <TidyDuplicates duplicates={duplicates} />
 
       <div className="mt-8 flex gap-2">
         <Link

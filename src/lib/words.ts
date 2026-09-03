@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { type ItemType, type WordRecord, wordItem } from '@/content/items'
 
@@ -34,13 +34,41 @@ export interface NewWord {
   worksheetId?: string | null
 }
 
+/** A word is the same word if it is written the same way and is the same kind. */
+function identity(thai: string, kind: 'word' | 'phrase'): string {
+  return `${kind}:${thai.trim()}`
+}
+
+/**
+ * Adds only what the deck does not already have.
+ *
+ * Extraction deduplicates within a batch, but nothing used to check a batch
+ * against the deck — so every import re-added the vocabulary the last import
+ * had already filed, and a handful of lessons became a deck too big to get
+ * through once. Textbook chapters repeat their core words constantly, which is
+ * exactly the vocabulary you most want a single card for.
+ */
 export async function addWords(newWords: NewWord[]): Promise<string[]> {
   if (newWords.length === 0) return []
+
+  const existing = new Set((await listWords()).map((word) => identity(word.thai, word.kind)))
+
+  // Also guards against a batch that repeats itself, so the caller does not
+  // have to have deduplicated first.
+  const seen = new Set<string>()
+  const fresh = newWords.filter((word) => {
+    const key = identity(word.thai, word.kind ?? 'word')
+    if (existing.has(key) || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  if (fresh.length === 0) return []
 
   const rows = await getDb()
     .insert(schema.words)
     .values(
-      newWords.map((word) => ({
+      fresh.map((word) => ({
         thai: word.thai.trim(),
         ipa: word.ipa.trim(),
         english: word.english.trim(),
@@ -54,6 +82,89 @@ export async function addWords(newWords: NewWord[]): Promise<string[]> {
     .returning({ id: schema.words.id })
 
   return rows.map((row) => row.id)
+}
+
+/**
+ * Removes vocabulary the deck holds more than once.
+ *
+ * Keeps the copy you have actually practised — the one carrying a schedule,
+ * and among those the one furthest along — so tidying up never costs progress.
+ * Failing that it keeps the oldest, which is the one most likely to be filed
+ * under the pack you remember putting it in.
+ */
+export async function removeDuplicateWords(): Promise<{ removed: number; kept: number }> {
+  const db = getDb()
+
+  const rows = await db
+    .select({
+      id: schema.words.id,
+      thai: schema.words.thai,
+      kind: schema.words.kind,
+      createdAt: schema.words.createdAt,
+    })
+    .from(schema.words)
+    .orderBy(desc(schema.words.createdAt))
+
+  const progress = await db
+    .select({ itemId: schema.itemProgress.itemId, reps: schema.itemProgress.reps })
+    .from(schema.itemProgress)
+    .where(eq(schema.itemProgress.itemType, 'word'))
+
+  const repsById = new Map<string, number>()
+  for (const row of progress) {
+    repsById.set(row.itemId, (repsById.get(row.itemId) ?? 0) + row.reps)
+  }
+
+  const groups = new Map<string, typeof rows>()
+  for (const row of rows) {
+    const key = identity(row.thai, row.kind)
+    groups.set(key, [...(groups.get(key) ?? []), row])
+  }
+
+  const doomed: string[] = []
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+
+    const [keep] = [...group].sort((a, b) => {
+      const reps = (repsById.get(b.id) ?? 0) - (repsById.get(a.id) ?? 0)
+      if (reps !== 0) return reps
+      return a.createdAt.getTime() - b.createdAt.getTime()
+    })
+
+    for (const row of group) if (row.id !== keep.id) doomed.push(row.id)
+  }
+
+  if (doomed.length === 0) return { removed: 0, kept: groups.size }
+
+  // In batches: a delete with two thousand bound parameters is asking for
+  // trouble on a hosted database.
+  for (let start = 0; start < doomed.length; start += 200) {
+    const slice = doomed.slice(start, start + 200)
+    await db.delete(schema.words).where(inArray(schema.words.id, slice))
+    await db
+      .delete(schema.itemProgress)
+      .where(
+        and(eq(schema.itemProgress.itemType, 'word'), inArray(schema.itemProgress.itemId, slice)),
+      )
+    await db
+      .delete(schema.itemNotes)
+      .where(and(eq(schema.itemNotes.itemType, 'word'), inArray(schema.itemNotes.itemId, slice)))
+  }
+
+  return { removed: doomed.length, kept: groups.size }
+}
+
+/** How many rows the deck holds more than once, without changing anything. */
+export async function countDuplicateWords(): Promise<number> {
+  const words = await listWords()
+  const seen = new Set<string>()
+  let duplicates = 0
+  for (const word of words) {
+    const key = identity(word.thai, word.kind)
+    if (seen.has(key)) duplicates++
+    else seen.add(key)
+  }
+  return duplicates
 }
 
 /** Distinct pack names, for the selection screen and the add form. */

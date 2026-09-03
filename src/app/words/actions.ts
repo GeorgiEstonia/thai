@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { requireAuth } from '@/lib/auth'
-import { addWords, deleteWord, updateWord } from '@/lib/words'
+import { addWords, deleteWord, removeDuplicateWords, updateWord } from '@/lib/words'
 
 export async function createWord(
   _prev: { error?: string } | undefined,
@@ -20,10 +20,25 @@ export async function createWord(
 
   if (!thai || !english) return { error: 'Thai and English are both needed.' }
 
-  await addWords([{ thai, ipa, english, kind, pack, notes, source: 'manual' }])
+  const added = await addWords([{ thai, ipa, english, kind, pack, notes, source: 'manual' }])
+  // Adding is now a no-op when the deck already has the word, so say so rather
+  // than reporting a success that didn't happen.
+  if (added.length === 0) return { error: `${thai} is already in your deck.` }
+
   revalidatePath('/words')
   revalidatePath('/practice')
   return { added: thai }
+}
+
+/** Collapses vocabulary the deck holds more than once. */
+export async function tidyDuplicates(): Promise<{ removed: number }> {
+  await requireAuth()
+  const { removed } = await removeDuplicateWords()
+
+  revalidatePath('/words')
+  revalidatePath('/words/practice')
+  revalidatePath('/practice')
+  return { removed }
 }
 
 export async function removeWord(id: string): Promise<void> {
