@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 
 import {
   DIRECTION_LABELS,
@@ -19,6 +19,8 @@ import {
   currentEntry,
   gradeCurrent,
 } from '@/lib/srs'
+
+import { type PendingGrade, enqueue, flushPending, readPending } from '@/lib/pending'
 
 import GlyphFaces from '@/components/GlyphFaces'
 
@@ -194,7 +196,34 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   >([])
   const [ended, setEnded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [unsaved, setUnsaved] = useState(0)
   const [, startTransition] = useTransition()
+
+  const send = useCallback(
+    (pending: PendingGrade) =>
+      gradeCard(
+        pending.itemType,
+        pending.itemId,
+        pending.direction,
+        pending.grade,
+        pending.reinforcement,
+      ),
+    [],
+  )
+
+  // Anything left over from a previous session goes first, before this one
+  // adds to it. A reload is the most likely fix for whatever broke the save,
+  // and this is the moment just after a reload.
+  useEffect(() => {
+    let cancelled = false
+    if (readPending().length === 0) return
+    void flushPending(send).then((left) => {
+      if (!cancelled) setUnsaved(left)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [send])
 
   const face = FACE_OPTIONS[faceIndex]
 
@@ -208,7 +237,8 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     if (!state) return
 
     const parsed = parseCardKey(entry.id)
-    const result = gradeCurrent(session, g, state, new Date())
+    const answeredAt = new Date()
+    const result = gradeCurrent(session, g, state, answeredAt)
 
     if (result.scheduling) {
       setStates((prev) => new Map(prev).set(entry.id, result.scheduling!.after))
@@ -238,15 +268,28 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     // Advance immediately and persist behind it — a drill that waits on the
     // network between cards stops being a drill.
     if (parsed) {
+      const pending: PendingGrade = {
+        itemType: parsed.type,
+        itemId: parsed.id,
+        direction: parsed.direction,
+        grade: g,
+        reinforcement: entry.reinforcement,
+        at: answeredAt.getTime(),
+      }
+
       startTransition(async () => {
         try {
-          await gradeCard(parsed.type, parsed.id, parsed.direction, g, entry.reinforcement)
+          await send(pending)
+          // Something got through, so anything held back is worth another go.
+          setUnsaved(await flushPending(send))
         } catch (cause) {
-          // Say what actually went wrong. Blaming the connection for what is
-          // usually a server-side failure sends you to check your wifi while
+          // Keep the answer rather than losing it, and say what actually went
+          // wrong — blaming the connection sends you to check your wifi while
           // the real reason sits in an error nobody ever sees.
+          enqueue(pending)
+          setUnsaved(readPending().length)
           const detail = cause instanceof Error ? cause.message : String(cause)
-          setError(`That answer did not save — ${detail}`)
+          setError(`Saved on this device, not yet on the server — ${detail}`)
         }
       })
     }
@@ -285,6 +328,13 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
       {error ? (
         <p role="alert" className="mt-3 rounded-lg bg-surface px-3 py-2 text-xs text-class-high">
           {error}
+        </p>
+      ) : null}
+
+      {unsaved > 0 ? (
+        <p className="mt-2 rounded-lg bg-surface px-3 py-2 text-xs text-muted">
+          {unsaved} {unsaved === 1 ? 'answer is' : 'answers are'} waiting to sync. Nothing is
+          lost — they go up on the next answer that gets through, or next time you open the app.
         </p>
       ) : null}
 

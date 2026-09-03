@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export default async function DrillPage({
   searchParams,
 }: {
-  searchParams: Promise<{ groups?: string; dirs?: string }>
+  searchParams: Promise<{ groups?: string; dirs?: string; kind?: string }>
 }) {
   await requireAuth()
 

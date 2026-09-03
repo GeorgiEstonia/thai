@@ -8,7 +8,8 @@ import {
 } from '@/content/items'
 
 import { getDb, schema } from './db'
-import { listWordItems, loadNotes } from './words'
+import { learnedWords, gateFor } from './unlock'
+import { listWordItems, listWords, loadNotes } from './words'
 import { type SrsState, isDue, isLeech, newState } from './srs'
 
 /**
@@ -18,10 +19,18 @@ import { type SrsState, isDue, isLeech, newState } from './srs'
  * job is to schedule what you chose, not to decide it for you.
  */
 
+/** Words and phrases are practised separately — see lib/unlock.ts for why. */
+export type VocabKind = 'word' | 'phrase'
+
 export interface Selection {
   /** Group ids to include. Empty means everything. */
   groups: string[]
   directions: Direction[]
+  /**
+   * Which half of the vocabulary to draw from. Undefined means both, which is
+   * what a selection of characters or vowels wants.
+   */
+  kind?: VocabKind
 }
 
 export interface DeckCard {
@@ -36,6 +45,7 @@ export interface DeckCard {
 export function parseSelection(params: {
   groups?: string | string[]
   dirs?: string | string[]
+  kind?: string | string[]
 }): Selection {
   const asList = (value: string | string[] | undefined): string[] =>
     (Array.isArray(value) ? value.join(',') : (value ?? ''))
@@ -47,9 +57,13 @@ export function parseSelection(params: {
     DIRECTIONS.includes(d as Direction),
   )
 
+  const kindValue = Array.isArray(params.kind) ? params.kind[0] : params.kind
+  const kind = kindValue === 'word' || kindValue === 'phrase' ? kindValue : undefined
+
   return {
     groups: asList(params.groups),
     directions: directions.length > 0 ? directions : DIRECTIONS,
+    kind,
   }
 }
 
@@ -57,6 +71,7 @@ export function serialiseSelection(selection: Selection): string {
   const search = new URLSearchParams()
   if (selection.groups.length > 0) search.set('groups', selection.groups.join(','))
   search.set('dirs', selection.directions.join(','))
+  if (selection.kind) search.set('kind', selection.kind)
   return search.toString()
 }
 
@@ -101,13 +116,41 @@ export async function loadProgress(): Promise<Map<string, SrsState>> {
   )
 }
 
+/**
+ * Keeps only the vocabulary this selection should actually show.
+ *
+ * Two filters, both about not being shown a card you have no way to answer:
+ * the chosen half of the deck (words or phrases), and — for phrases — whether
+ * the words inside it have been learned yet.
+ */
+async function applyVocabRules(
+  items: PracticeItem[],
+  selection: Selection,
+  progress: Map<string, SrsState>,
+): Promise<PracticeItem[]> {
+  const hasVocab = items.some((item) => item.type === 'word')
+  if (!hasVocab) return items
+
+  const vocabulary = await listWords()
+  const learned = learnedWords(vocabulary, progress)
+
+  return items.filter((item) => {
+    if (item.type !== 'word') return true
+    if (selection.kind && item.word.kind !== selection.kind) return false
+    if (item.word.kind !== 'phrase') return true
+    return gateFor(item.word, vocabulary, learned).unlocked
+  })
+}
+
 /** Every card (item × direction) implied by a selection, with its schedule. */
 export async function loadDeck(selection: Selection, now: Date): Promise<DeckCard[]> {
-  const [progress, items, notes] = await Promise.all([
+  const [progress, allItems, notes] = await Promise.all([
     loadProgress(),
     selectedItems(selection),
     loadNotes(),
   ])
+
+  const items = await applyVocabRules(allItems, selection, progress)
 
   return items.flatMap((item) =>
     selection.directions.map((direction): DeckCard => {
