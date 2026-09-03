@@ -241,8 +241,12 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
       startTransition(async () => {
         try {
           await gradeCard(parsed.type, parsed.id, parsed.direction, g, entry.reinforcement)
-        } catch {
-          setError('That answer did not save. Check your connection.')
+        } catch (cause) {
+          // Say what actually went wrong. Blaming the connection for what is
+          // usually a server-side failure sends you to check your wifi while
+          // the real reason sits in an error nobody ever sees.
+          const detail = cause instanceof Error ? cause.message : String(cause)
+          setError(`That answer did not save — ${detail}`)
         }
       })
     }

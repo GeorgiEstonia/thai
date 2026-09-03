@@ -60,6 +60,15 @@ export const words = pgTable('words', {
   /** Anything else worth keeping — usage, register, who said it. */
   notes: text('notes'),
   source: text('source', { enum: ['manual', 'worksheet'] }).notNull(),
+  /**
+   * For a phrase: the Thai words it is built from.
+   *
+   * A phrase is not an independent item — it is the words you already know,
+   * arranged. Recording which ones lets a phrase stay out of the way until
+   * those words have actually landed, so a sentence is never the place you
+   * meet a word for the first time. Empty for a plain word.
+   */
+  components: text('components').array(),
   worksheetId: uuid('worksheet_id'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
     .notNull()
@@ -152,6 +161,8 @@ export interface ExtractedWord {
   kind: 'word' | 'phrase'
   notes: string | null
   confidence: 'high' | 'medium' | 'low'
+  /** For a phrase: the vocabulary items it was composed from. */
+  components?: string[]
   /** Set by the second pass: does this actually look like real Thai? */
   verified?: boolean
   /** Why it was held back, when it was. */

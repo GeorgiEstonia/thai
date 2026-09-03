@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 
 import { getDb, schema } from '@/lib/db'
@@ -22,7 +22,66 @@ function redact(message: string): string {
     .slice(0, 300)
 }
 
-export async function GET() {
+/** Unwraps the driver error a wrapper is hiding, which is where the real
+ *  reason ("no pg_hba entry", "relation does not exist") always lives. */
+function explain(error: unknown): string {
+  const chain: string[] = []
+  let current: unknown = error
+  for (let depth = 0; current instanceof Error && depth < 4; depth++) {
+    const code = (current as Error & { code?: string }).code
+    chain.push(`${current.message}${code ? ` [${code}]` : ''}`)
+    current = (current as Error & { cause?: unknown }).cause
+  }
+  return redact(chain.join(' <- '))
+}
+
+/**
+ * Does a write actually go through?
+ *
+ * Reading works over a plain query; grading a card needs a transaction, an
+ * upsert and an append, and those can fail on their own. A read-only health
+ * check calls that healthy, which is exactly how "the answer did not save"
+ * stayed invisible. So the probe runs the real transaction against a reserved
+ * sentinel row and then removes it.
+ */
+async function probeWrite() {
+  const db = getDb()
+  const ID = '__health_probe__'
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(schema.itemProgress)
+        .values({ itemType: 'character', itemId: ID, direction: 'recognise', intervalDays: 1 })
+        .onConflictDoUpdate({
+          target: [
+            schema.itemProgress.itemType,
+            schema.itemProgress.itemId,
+            schema.itemProgress.direction,
+          ],
+          set: { intervalDays: 1 },
+        })
+      await tx.insert(schema.reviewLog).values({
+        itemType: 'character',
+        itemId: ID,
+        direction: 'recognise',
+        grade: 'got',
+        intervalBefore: 0,
+        intervalAfter: 1,
+      })
+    })
+    await db.delete(schema.reviewLog).where(eq(schema.reviewLog.itemId, ID))
+    await db
+      .delete(schema.itemProgress)
+      .where(
+        and(eq(schema.itemProgress.itemType, 'character'), eq(schema.itemProgress.itemId, ID)),
+      )
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: explain(error) }
+  }
+}
+
+export async function GET(request: Request) {
   const env = {
     DATABASE_URL: Boolean(process.env.DATABASE_URL),
     APP_PASSPHRASE: Boolean(process.env.APP_PASSPHRASE),
@@ -49,18 +108,14 @@ export async function GET() {
   } catch (error) {
     // Drizzle wraps driver errors, so the useful part ("no pg_hba entry",
     // "self signed certificate", "relation does not exist") is in the cause.
-    const chain: string[] = []
-    let current: unknown = error
-    for (let depth = 0; current instanceof Error && depth < 4; depth++) {
-      const code = (current as Error & { code?: string }).code
-      chain.push(`${current.message}${code ? ` [${code}]` : ''}`)
-      current = (current as Error & { cause?: unknown }).cause
-    }
-    database = { ok: false, error: redact(chain.join(' <- ')) }
+    database = { ok: false, error: explain(error) }
   }
 
+  const write =
+    new URL(request.url).searchParams.get('probe') === 'write' ? await probeWrite() : undefined
+
   return NextResponse.json(
-    { env, database, commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local' },
+    { env, database, write, commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local' },
     { status: database.ok && Object.values(env).every(Boolean) ? 200 : 503 },
   )
 }
