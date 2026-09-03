@@ -81,6 +81,37 @@ async function probeWrite() {
   }
 }
 
+/**
+ * How big the deck actually is, and how much of it is the same word twice.
+ *
+ * Counts only, never content: this endpoint is unauthenticated on purpose and
+ * has no business handing out someone's vocabulary.
+ */
+async function deckStats() {
+  const db = getDb()
+  const rows = await db
+    .select({ thai: schema.words.thai, kind: schema.words.kind })
+    .from(schema.words)
+
+  const distinct = { word: new Set<string>(), phrase: new Set<string>() }
+  const total = { word: 0, phrase: 0 }
+
+  for (const row of rows) {
+    total[row.kind]++
+    distinct[row.kind].add(row.thai.trim())
+  }
+
+  return {
+    rows: rows.length,
+    words: total.word,
+    phrases: total.phrase,
+    distinctWords: distinct.word.size,
+    distinctPhrases: distinct.phrase.size,
+    duplicateRows:
+      total.word - distinct.word.size + (total.phrase - distinct.phrase.size),
+  }
+}
+
 export async function GET(request: Request) {
   const env = {
     DATABASE_URL: Boolean(process.env.DATABASE_URL),
@@ -111,11 +142,18 @@ export async function GET(request: Request) {
     database = { ok: false, error: explain(error) }
   }
 
-  const write =
-    new URL(request.url).searchParams.get('probe') === 'write' ? await probeWrite() : undefined
+  const params = new URL(request.url).searchParams
+  const write = params.get('probe') === 'write' ? await probeWrite() : undefined
+  const deck = database.ok && params.get('deck') === '1' ? await deckStats() : undefined
 
   return NextResponse.json(
-    { env, database, write, commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local' },
+    {
+      env,
+      database,
+      write,
+      deck,
+      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
+    },
     { status: database.ok && Object.values(env).every(Boolean) ? 200 : 503 },
   )
 }
