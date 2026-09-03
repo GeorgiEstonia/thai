@@ -13,21 +13,32 @@ const UPLOAD_RETRIES = 3
 
 /** Pages uploaded at once. Small enough that each body stays well under any
  *  request limit, large enough that twenty pages don't crawl. */
-const UPLOAD_CONCURRENCY = 3
+const UPLOAD_CONCURRENCY = 2
 
 async function downscale(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+  try {
+    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
 
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
 
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Could not read the image')
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Could not read the image')
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
 
-  return canvas.toDataURL('image/jpeg', 0.85)
+    const url = canvas.toDataURL('image/jpeg', 0.85)
+    // Drop the backing store straight away. A phone photo decodes to tens of
+    // megabytes, and Safari caps how much canvas and bitmap memory a page may
+    // hold — reach it and later images fail to decode, which looks exactly
+    // like the upload skipping pages.
+    canvas.width = 0
+    canvas.height = 0
+    return url
+  } finally {
+    bitmap.close()
+  }
 }
 
 export default function CaptureClient({ packs }: { packs: string[] }) {
@@ -80,16 +91,26 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
         const results = await Promise.all(slice.map((file) => uploadOne(id, file)))
 
         results.forEach((ok, offset) => {
-          if (!ok) failed.push(start + offset + 1)
+          if (ok) done += 1
+          else failed.push(start + offset + 1)
         })
-        done += slice.length
         setProgress({ done, total: files.length })
       }
 
       const uploaded = files.length - failed.length
       if (uploaded === 0) throw new Error('no pages uploaded')
 
-      await fetch(`/api/worksheets/${id}/start`, { method: 'POST' })
+      // Until this lands the batch is not sealed and nothing will read it, so
+      // it is worth more than one attempt.
+      let started = false
+      for (let attempt = 0; attempt < 3 && !started; attempt++) {
+        try {
+          started = (await fetch(`/api/worksheets/${id}/start`, { method: 'POST' })).ok
+        } catch {
+          // Fall through and try again.
+        }
+        if (!started) await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)))
+      }
 
       setProgress(null)
       if (failed.length > 0) {

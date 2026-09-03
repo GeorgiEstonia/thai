@@ -25,6 +25,18 @@ import { addWords } from './words'
 /** A step is considered dead if it has made no progress in this long. */
 export const STALL_MS = 90 * 1000
 
+/**
+ * How long a batch may sit in "uploading" before we assume the browser that
+ * was sending it is gone.
+ *
+ * This is deliberately far longer than STALL_MS. An upload in progress is not
+ * a stalled step — it is a phone working its way through a pile of photos, and
+ * nine of them take well over ninety seconds. Treating that as a stall is what
+ * used to start extraction on a half-uploaded batch and silently drop the
+ * pages that had not landed yet.
+ */
+export const UPLOAD_GRACE_MS = 15 * 60 * 1000
+
 export async function createWorksheet(pack: string | null): Promise<string> {
   const [row] = await getDb()
     .insert(schema.worksheets)
@@ -48,6 +60,24 @@ export async function appendPage(worksheetId: string, image: string): Promise<nu
     await tx.insert(schema.worksheetPages).values({ worksheetId, index, image })
     return index + 1
   })
+}
+
+/**
+ * Marks a batch as fully uploaded, which is what allows extraction to begin.
+ *
+ * Uploading is the one phase whose end only the browser knows: the server
+ * cannot tell "six pages so far" from "six pages, that's all". So the client
+ * says so explicitly, and until it does no step will touch the batch. Guarded
+ * on the current status so a duplicate call cannot rewind a job that has
+ * already moved on.
+ */
+export async function sealWorksheet(worksheetId: string): Promise<void> {
+  await getDb()
+    .update(schema.worksheets)
+    .set({ status: 'extracting', stepAt: new Date() })
+    .where(
+      and(eq(schema.worksheets.id, worksheetId), eq(schema.worksheets.status, 'uploading')),
+    )
 }
 
 /** Loads a single page — a step never needs the rest of the batch. */
@@ -89,6 +119,12 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
     if (!sheet) return { done: true, status: 'missing' }
     if (sheet.status === 'ready' || sheet.status === 'reviewed' || sheet.status === 'failed') {
       return { done: true, status: sheet.status }
+    }
+    // Pages are still arriving. Reading the batch now would read only the ones
+    // that happen to have landed, and mark the rest done without ever opening
+    // them — so wait to be sealed instead.
+    if (sheet.status === 'uploading') {
+      return { done: true, status: 'uploading' }
     }
 
     const pages = sheet.pageCount
@@ -219,7 +255,14 @@ export async function activeWorksheets() {
       // A job whose step died leaves no error behind, so infer it from the
       // clock. A null stepAt means no step ever ran — which is itself a stall
       // once the job is no longer fresh, not a reason to wait forever.
-      stalled: Date.now() - (sheet.stepAt ?? sheet.createdAt).getTime() > STALL_MS,
+      //
+      // An "uploading" job is the exception: nothing is stuck, a browser is
+      // still feeding it pages, and the only honest deadline is the much
+      // longer one after which that browser is presumed gone.
+      stalled:
+        sheet.status === 'uploading'
+          ? Date.now() - sheet.createdAt.getTime() > UPLOAD_GRACE_MS
+          : Date.now() - (sheet.stepAt ?? sheet.createdAt).getTime() > STALL_MS,
     }))
 }
 
@@ -238,11 +281,14 @@ export async function reviveStalled(
   const stalled = (await activeWorksheets()).filter((job) => job.stalled)
 
   await Promise.all(
-    stalled.map((job) =>
-      fetch(`${origin}/api/worksheets/${job.id}/step?t=${sign(job.id)}`, {
+    stalled.map(async (job) => {
+      // An upload this old was abandoned mid-flight. Seal it so the pages that
+      // did land get read, rather than leaving them in limbo forever.
+      if (job.status === 'uploading') await sealWorksheet(job.id)
+      await fetch(`${origin}/api/worksheets/${job.id}/step?t=${sign(job.id)}`, {
         method: 'POST',
-      }).catch(() => {}),
-    ),
+      }).catch(() => {})
+    }),
   )
 
   return stalled.map((job) => job.id)

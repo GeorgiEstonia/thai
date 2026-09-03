@@ -5,8 +5,19 @@ import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { eq } from 'drizzle-orm'
+
 import { __setTestDb, getDb, schema } from './db'
-import { appendPage, createWorksheet, loadPages } from './worksheets'
+import {
+  UPLOAD_GRACE_MS,
+  activeWorksheets,
+  appendPage,
+  createWorksheet,
+  getWorksheet,
+  loadPages,
+  runStep,
+  sealWorksheet,
+} from './worksheets'
 
 const client = new PGlite()
 const db = drizzle(client, { schema })
@@ -69,5 +80,78 @@ describe('page storage', () => {
 
     const orphans = await db.select().from(schema.worksheetPages)
     expect(orphans).toHaveLength(0)
+  })
+})
+
+/**
+ * The bug these cover: nothing ever told the server that uploading had
+ * finished, so the background stall-checker treated a batch that was still
+ * receiving pages as a dead job, kicked off extraction, and read only the
+ * pages that happened to have landed. Nine phone photos take longer than the
+ * ninety-second stall window; two do not — which is why it looked intermittent
+ * and size-dependent.
+ */
+describe('uploading is not a stalled step', () => {
+  async function ageWorksheet(id: string, ms: number) {
+    await db
+      .update(schema.worksheets)
+      .set({ createdAt: new Date(Date.now() - ms) })
+      .where(eq(schema.worksheets.id, id))
+  }
+
+  it('does not report a long upload as stalled', async () => {
+    const id = await createWorksheet(null)
+    await appendPage(id, 'data:image/jpeg;base64,A')
+    // Well past the step-stall window, but a browser is still feeding it.
+    await ageWorksheet(id, 10 * 60 * 1000)
+
+    const [job] = await activeWorksheets()
+    expect(job.status).toBe('uploading')
+    expect(job.stalled).toBe(false)
+  })
+
+  it('gives up on an upload that was genuinely abandoned', async () => {
+    const id = await createWorksheet(null)
+    await appendPage(id, 'data:image/jpeg;base64,A')
+    await ageWorksheet(id, UPLOAD_GRACE_MS + 1000)
+
+    const [job] = await activeWorksheets()
+    expect(job.stalled).toBe(true)
+  })
+
+  it('refuses to read a batch that has not been sealed', async () => {
+    const id = await createWorksheet(null)
+    await appendPage(id, 'data:image/jpeg;base64,A')
+
+    const result = await runStep(id)
+    expect(result).toEqual({ done: true, status: 'uploading' })
+
+    // Nothing was consumed, so the pages still uploading are still unread.
+    const sheet = await getWorksheet(id)
+    expect(sheet?.pagesDone).toBe(0)
+    expect(sheet?.status).toBe('uploading')
+  })
+
+  it('reads every page when the seal comes after the last one', async () => {
+    const id = await createWorksheet(null)
+    for (let i = 0; i < 9; i++) await appendPage(id, `data:image/jpeg;base64,PAGE${i}`)
+    await sealWorksheet(id)
+
+    const sheet = await getWorksheet(id)
+    expect(sheet?.status).toBe('extracting')
+    expect(sheet?.pageCount).toBe(9)
+  })
+
+  it('will not rewind a batch that has already moved past uploading', async () => {
+    const id = await createWorksheet(null)
+    await appendPage(id, 'data:image/jpeg;base64,A')
+    await db
+      .update(schema.worksheets)
+      .set({ status: 'verifying' })
+      .where(eq(schema.worksheets.id, id))
+
+    await sealWorksheet(id)
+
+    expect((await getWorksheet(id))?.status).toBe('verifying')
   })
 })

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 
 import { isAuthenticated } from '@/lib/auth'
 import { signStep } from '@/lib/steps'
+import { sealWorksheet } from '@/lib/worksheets'
 
 export const maxDuration = 60
 
@@ -14,6 +15,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!(await isAuthenticated())) return NextResponse.json({ error: 'auth' }, { status: 401 })
 
   const { id } = await params
+
+  // Uploads are finished — say so before anything starts reading. This is the
+  // only moment the server can know the batch is complete, and without it a
+  // background nudge can begin extraction on a partly-uploaded batch and
+  // quietly leave the last pages unread.
+  await sealWorksheet(id)
+
   const step = new URL(request.url)
   step.pathname = step.pathname.replace(/\/start$/, '/step')
   step.searchParams.set('t', signStep(id))
