@@ -1,10 +1,12 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
+
 import { type Direction, type ItemType, findItem } from '@/content/items'
 import { requireAuth } from '@/lib/auth'
 import { loadOneState, recordReview } from '@/lib/mutations'
 import { type Grade, applyGrade, newState } from '@/lib/srs'
-import { saveNote } from '@/lib/words'
+import { deleteWord, saveNote, updateWord } from '@/lib/words'
 
 /**
  * Grades one showing.
@@ -50,4 +52,27 @@ export async function saveMnemonic(
 ): Promise<void> {
   await requireAuth()
   await saveNote(itemType, itemId, mnemonic)
+}
+
+/**
+ * Editing and deleting a card from inside the drill.
+ *
+ * Both already exist on the vocabulary screen; these are the same operations
+ * reached from where you actually notice the problem.
+ */
+export async function editDrillWord(
+  id: string,
+  patch: { thai: string; ipa: string; english: string; notes: string | null; pack: string | null },
+): Promise<void> {
+  await requireAuth()
+  await updateWord(id, patch)
+  revalidatePath('/words')
+  revalidatePath('/words/practice')
+}
+
+export async function removeDrillWord(id: string): Promise<void> {
+  await requireAuth()
+  await deleteWord(id)
+  revalidatePath('/words')
+  revalidatePath('/words/practice')
 }

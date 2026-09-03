@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState, useTransition } from 'react'
 
 import {
+  DIRECTIONS,
   DIRECTION_LABELS,
   type Direction,
   type PracticeItem,
   WORD_DIRECTION_LABELS,
+  cardKey,
   parseCardKey,
   produceHint,
 } from '@/content/items'
@@ -17,6 +19,7 @@ import {
   type SessionState,
   type SrsState,
   currentEntry,
+  dropFromSession,
   gradeCurrent,
 } from '@/lib/srs'
 
@@ -24,6 +27,7 @@ import { type PendingGrade, enqueue, flushPending, readPending } from '@/lib/pen
 
 import GlyphFaces from '@/components/GlyphFaces'
 
+import CardEditor from './CardEditor'
 import MnemonicEditor from './MnemonicEditor'
 
 import { gradeCard } from './actions'
@@ -194,6 +198,11 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
       interval: number
     }[]
   >([])
+  // Edits made mid-drill, held here so the card in front of you updates the
+  // moment you save rather than on the next page load.
+  const [edits, setEdits] = useState<
+    Record<string, { thai: string; ipa: string; english: string; notes: string | null }>
+  >({})
   const [ended, setEnded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unsaved, setUnsaved] = useState(0)
@@ -229,7 +238,21 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
 
   const byKey = new Map(cards.map((card) => [card.key, card]))
   const entry = currentEntry(session)
-  const card = entry ? byKey.get(entry.id) : undefined
+  const found = entry ? byKey.get(entry.id) : undefined
+
+  // Apply any mid-drill edit over the card as it was loaded.
+  const card =
+    found && found.item.type === 'word' && edits[found.item.id]
+      ? {
+          ...found,
+          item: {
+            ...found.item,
+            thai: edits[found.item.id].thai,
+            ipa: edits[found.item.id].ipa,
+            word: { ...found.item.word, ...edits[found.item.id] },
+          },
+        }
+      : found
 
   function grade(g: Grade) {
     if (!entry || !card) return
@@ -466,6 +489,31 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                 initial={card.note}
               />
             </div>
+
+            {/* Only vocabulary. Consonants and vowels are authored content —
+                the same for every session, and not yours to delete from here. */}
+            {item.type === 'word' ? (
+              <div className="border-t border-edge pt-4">
+                <CardEditor
+                  key={card.key}
+                  word={item.word}
+                  onEdited={(patch) =>
+                    setEdits((prev) => ({ ...prev, [item.id]: patch }))
+                  }
+                  onDeleted={() => {
+                    // Both directions go: the word is gone, so the card
+                    // asking you to produce it is gone too.
+                    setSession((prev) =>
+                      dropFromSession(
+                        prev,
+                        ...DIRECTIONS.map((d) => cardKey('word', item.id, d)),
+                      ),
+                    )
+                    setRevealed(false)
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         )}
       </Card>

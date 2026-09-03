@@ -2,6 +2,9 @@ import { PRACTICE_ITEMS, DIRECTIONS, cardKey } from '@/content/items'
 import PractiseCta from '@/components/PractiseCta'
 import { requireAuth } from '@/lib/auth'
 import { loadDueSnapshot } from '@/lib/practice'
+import { countDuplicateWords } from '@/lib/words'
+
+import TidyDuplicates from '@/app/words/TidyDuplicates'
 
 import SelectionClient from './SelectionClient'
 
@@ -10,7 +13,12 @@ export const dynamic = 'force-dynamic'
 export default async function PracticePage() {
   await requireAuth()
 
-  const { dueByKey, seenKeys } = await loadDueSnapshot()
+  // This is the screen the app opens on, so it is where a deck that needs
+  // tidying will actually be found.
+  const [{ dueByKey, seenKeys }, duplicates] = await Promise.all([
+    loadDueSnapshot(),
+    countDuplicateWords(),
+  ])
   const seen = new Set(seenKeys)
 
   // Everything waiting: reviews that have come due, plus anything never
@@ -31,6 +39,7 @@ export default async function PracticePage() {
     <>
       <div className="px-5 pt-6 max-w-md w-full mx-auto">
         <PractiseCta href={reviewHref} due={due} label="Practise" />
+        <TidyDuplicates duplicates={duplicates} />
       </div>
       <SelectionClient dueByKey={dueByKey} seenKeys={seenKeys} />
     </>

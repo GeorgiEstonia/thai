@@ -5,11 +5,13 @@ import {
   MASTERY_INTERVAL_DAYS,
   MAX_INTERVAL_DAYS,
   MAX_REINFORCEMENTS_PER_ITEM,
+  type SessionState,
   type SrsState,
   addDays,
   applyGrade,
   buildSession,
   currentEntry,
+  dropFromSession,
   gateDistance,
   gradeCurrent,
   isBatchMastered,
@@ -242,5 +244,54 @@ describe('session queue', () => {
       before: overdue,
       after: applyGrade(overdue, 'got', NOW),
     })
+  })
+})
+
+describe('dropFromSession', () => {
+  const session: SessionState = {
+    queue: [
+      { id: 'word:a:recognise', kind: 'new', reinforcement: false },
+      { id: 'word:b:recognise', kind: 'review', reinforcement: false },
+      { id: 'word:a:recognise', kind: 'new', reinforcement: true },
+    ],
+    reinforcementCounts: { 'word:a:recognise': 1 },
+    completed: ['word:a:recognise'],
+  }
+
+  it('removes every queued showing of the item, not just the current one', () => {
+    const after = dropFromSession(session, 'word:a:recognise')
+    expect(after.queue.map((entry) => entry.id)).toEqual(['word:b:recognise'])
+  })
+
+  it('leaves the rest of the queue in order', () => {
+    const after = dropFromSession(session, 'word:a:recognise')
+    expect(after.queue).toEqual([{ id: 'word:b:recognise', kind: 'review', reinforcement: false }])
+  })
+
+  it('forgets the item entirely rather than reporting it as done', () => {
+    const after = dropFromSession(session, 'word:a:recognise')
+    expect(after.completed).toEqual([])
+    expect(after.reinforcementCounts).toEqual({})
+  })
+
+  it('does nothing when the item is not in the session', () => {
+    expect(dropFromSession(session, 'word:zz:recognise')).toEqual(session)
+  })
+})
+
+describe('dropFromSession with several ids', () => {
+  it('removes both directions of a deleted word at once', () => {
+    const session: SessionState = {
+      queue: [
+        { id: 'word:a:recognise', kind: 'new', reinforcement: false },
+        { id: 'word:a:produce', kind: 'new', reinforcement: false },
+        { id: 'word:b:recognise', kind: 'review', reinforcement: false },
+      ],
+      reinforcementCounts: {},
+      completed: [],
+    }
+
+    const after = dropFromSession(session, 'word:a:recognise', 'word:a:produce')
+    expect(after.queue.map((entry) => entry.id)).toEqual(['word:b:recognise'])
   })
 })

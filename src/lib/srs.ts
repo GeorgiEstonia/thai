@@ -239,3 +239,29 @@ export function gradeCurrent(
       : { id: entry.id, before: state, after: applyGrade(state, grade, now) },
   }
 }
+
+/**
+ * Takes one or more items out of the session entirely.
+ *
+ * For a card deleted mid-drill. Every entry for that item goes, not just the
+ * one in front, because a card that was missed or is new is queued to come
+ * back later in the sitting — and a deleted card returning would be a card
+ * asking about a word that no longer exists. It takes several ids because
+ * deleting a word kills both of its directions, not only the one on screen.
+ *
+ * It is not added to `completed`: nothing was answered, so there is nothing to
+ * report in the summary.
+ */
+export function dropFromSession(session: SessionState, ...ids: string[]): SessionState {
+  const dropped = new Set(ids)
+
+  const reinforcementCounts = Object.fromEntries(
+    Object.entries(session.reinforcementCounts).filter(([id]) => !dropped.has(id)),
+  )
+
+  return {
+    queue: session.queue.filter((entry) => !dropped.has(entry.id)),
+    reinforcementCounts,
+    completed: session.completed.filter((id) => !dropped.has(id)),
+  }
+}
