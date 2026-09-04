@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 
 import {
   DIRECTIONS,
   DIRECTION_LABELS,
   type Direction,
+  type ItemType,
   type PracticeItem,
   WORD_DIRECTION_LABELS,
   cardKey,
@@ -24,13 +25,14 @@ import {
 } from '@/lib/srs'
 
 import { type PendingGrade, enqueue, flushPending, readPending } from '@/lib/pending'
+import { speechTextFor, useSpeech } from '@/lib/speech'
 
 import GlyphFaces from '@/components/GlyphFaces'
 
 import CardEditor from './CardEditor'
 import MnemonicEditor from './MnemonicEditor'
 
-import { gradeCard } from './actions'
+import { gradeCard, saveMnemonic } from './actions'
 
 export interface DrillCard {
   key: string
@@ -203,6 +205,10 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   const [edits, setEdits] = useState<
     Record<string, { thai: string; ipa: string; english: string; notes: string | null }>
   >({})
+  const speech = useSpeech()
+  // What is typed into the mnemonic box but not yet saved, so grading can
+  // flush it rather than losing a thought to a missed tap.
+  const mnemonicDraft = useRef<{ itemType: ItemType; itemId: string; text: string } | null>(null)
   const [ended, setEnded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unsaved, setUnsaved] = useState(0)
@@ -254,6 +260,29 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
         }
       : found
 
+  // Speak the Thai at the moment it appears — straight away when the card
+  // leads with Thai, and on the flip when it leads with English or IPA. Tying
+  // it to "is the Thai visible" rather than to a direction means one rule
+  // covers every card type.
+  const thaiVisible = Boolean(card) && (card!.direction === 'recognise' || revealed)
+  const spokenText = card && thaiVisible ? speechTextFor(card.item) : null
+  const lastSpoken = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!spokenText) {
+      lastSpoken.current = null
+      return
+    }
+    // Guard against re-speaking on unrelated re-renders — typing a mnemonic
+    // re-renders this component on every keystroke.
+    const token = `${card?.key ?? ''}|${spokenText}`
+    if (lastSpoken.current === token) return
+    // Only tick the card off once it has genuinely been spoken. Voices load
+    // asynchronously, so an early attempt is a no-op — recording it anyway
+    // would leave the first card of every session silent.
+    if (speech.speak(spokenText)) lastSpoken.current = token
+  }, [spokenText, card?.key, speech])
+
   function grade(g: Grade) {
     if (!entry || !card) return
     const state = states.get(entry.id)
@@ -287,6 +316,21 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     setSession(result.session)
     setRevealed(false)
     setError(null)
+
+    // Keep whatever was typed into the mnemonic box. Tapping a grade button
+    // does not reliably blur a textarea on a touch screen, so without this the
+    // note you just wrote goes with the card.
+    const draft = mnemonicDraft.current
+    mnemonicDraft.current = null
+    if (draft) {
+      startTransition(async () => {
+        try {
+          await saveMnemonic(draft.itemType, draft.itemId, draft.text)
+        } catch {
+          // The grade matters more; a lost mnemonic is retyped in seconds.
+        }
+      })
+    }
 
     // Advance immediately and persist behind it — a drill that waits on the
     // network between cards stops being a drill.
@@ -335,6 +379,17 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
         <span>{session.queue.length} left</span>
         <span className="font-mono">{directionLabel}</span>
         <div className="flex items-center gap-3">
+          {speech.available ? (
+            <button
+              onClick={() => speech.setMuted(!speech.muted)}
+              aria-pressed={speech.muted}
+              title={speech.muted ? 'Turn pronunciation on' : 'Turn pronunciation off'}
+              className="text-sm leading-none"
+            >
+              <span aria-hidden>{speech.muted ? '🔇' : '🔊'}</span>
+              <span className="sr-only">{speech.muted ? 'Sound off' : 'Sound on'}</span>
+            </button>
+          ) : null}
           <button
             onClick={() => setFaceIndex((i) => (i + 1) % FACE_OPTIONS.length)}
             className="underline underline-offset-4"
@@ -351,6 +406,13 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
       {error ? (
         <p role="alert" className="mt-3 rounded-lg bg-surface px-3 py-2 text-xs text-class-high">
           {error}
+        </p>
+      ) : null}
+
+      {speech.ready && !speech.available ? (
+        <p className="mt-2 rounded-lg bg-surface px-3 py-2 text-xs text-muted">
+          No Thai voice on this device, so pronunciation is off. On iPhone:
+          Settings → Accessibility → Spoken Content → Voices → Thai.
         </p>
       ) : null}
 
@@ -487,6 +549,10 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                 itemType={item.type}
                 itemId={item.id}
                 initial={card.note}
+                onDraft={(text) =>
+                  (mnemonicDraft.current =
+                    text === '' ? null : { itemType: item.type, itemId: item.id, text })
+                }
               />
             </div>
 
@@ -517,6 +583,20 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
           </div>
         )}
       </Card>
+
+      {/* Outside the card on purpose. While unrevealed the card is itself one
+          big <button>, and a button nested in a button is invalid HTML — it
+          breaks hydration and takes the whole page's interactivity with it. */}
+      {spokenText ? (
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={() => speech.speak(spokenText)}
+            className="rounded-full border border-edge px-4 py-2 text-xs text-muted"
+          >
+            <span aria-hidden>🔊</span> hear it again
+          </button>
+        </div>
+      ) : null}
 
       {revealed ? (
         <div className="mt-6 grid grid-cols-2 gap-3">
