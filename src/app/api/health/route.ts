@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 
-import { getDb, schema } from '@/lib/db'
+import { ensureSchema, getDb, schema } from '@/lib/db'
 
 /**
  * Says what is actually broken, without a log viewer.
@@ -88,6 +88,12 @@ async function probeWrite() {
  * has no business handing out someone's vocabulary.
  */
 async function deckStats() {
+  // Applies any columns and tables the running code expects. Doing it here
+  // means the health check reports the schema the app will actually use,
+  // rather than whatever state it happened to be left in — and confirms the
+  // step works at all, which is otherwise only observable by signing in.
+  await ensureSchema()
+
   const db = getDb()
   const rows = await db
     .select({ thai: schema.words.thai, kind: schema.words.kind })
