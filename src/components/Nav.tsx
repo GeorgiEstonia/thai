@@ -13,6 +13,7 @@ import { usePathname } from 'next/navigation'
 const TABS = [
   { href: '/practice', label: 'Characters', match: ['/practice'] },
   { href: '/words', label: 'Words', match: ['/words', '/capture', '/generate'] },
+  { href: '/settings', label: 'More', match: ['/settings', '/progress'] },
 ] as const
 
 export default function Nav() {

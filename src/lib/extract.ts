@@ -1,6 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 import type { ExtractedWord } from './db/schema'
+import { recordUsage, tokensFrom } from './usage'
+
+/** One place, so what is billed and what is recorded cannot drift apart. */
+const MODEL = 'claude-opus-5'
 
 /**
  * Reads vocabulary off photographed textbook pages.
@@ -175,7 +179,7 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: 'claude-opus-5',
+    model: MODEL,
     max_tokens: 16000,
     system: DESCRIBE_SYSTEM,
     output_config: { format: { type: 'json_schema', schema: DESCRIBE_SCHEMA } },
@@ -183,6 +187,7 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
   })
 
   const response = await stream.finalMessage()
+  await recordUsage('write examples', MODEL, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') return []
 
   const text = response.content.find((block) => block.type === 'text')
@@ -319,7 +324,7 @@ export async function extractWords(imageDataUrls: string[]): Promise<ExtractedWo
   // Streamed because the SDK refuses a non-streaming request whose max_tokens
   // could outrun the HTTP timeout, and a chapter needs a large budget.
   const stream = client.messages.stream({
-    model: 'claude-opus-5',
+    model: MODEL,
     // Opus 5 thinks by default and max_tokens caps thinking plus output
     // together — a whole textbook chapter needs real headroom here.
     max_tokens: 32000,
@@ -352,6 +357,7 @@ export async function extractWords(imageDataUrls: string[]): Promise<ExtractedWo
   })
 
   const response = await stream.finalMessage()
+  await recordUsage('read page', MODEL, tokensFrom(response.usage))
 
   if (response.stop_reason === 'refusal') throw new Error('The request was declined.')
 
@@ -381,7 +387,7 @@ export async function composePhrases(words: ExtractedWord[]): Promise<ExtractedW
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: 'claude-opus-5',
+    model: MODEL,
     max_tokens: 8000,
     system: PHRASE_SYSTEM,
     output_config: { format: { type: 'json_schema', schema: PHRASE_SCHEMA } },
@@ -401,6 +407,7 @@ export async function composePhrases(words: ExtractedWord[]): Promise<ExtractedW
   })
 
   const response = await stream.finalMessage()
+  await recordUsage('write phrases', MODEL, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') return []
 
   const text = response.content.find((block) => block.type === 'text')
@@ -430,7 +437,7 @@ export async function verifyItems(items: ExtractedWord[]): Promise<ExtractedWord
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: 'claude-opus-5',
+    model: MODEL,
     max_tokens: 32000,
     system: VERIFY_SYSTEM,
     output_config: { format: { type: 'json_schema', schema: VERIFY_SCHEMA } },
@@ -452,6 +459,7 @@ export async function verifyItems(items: ExtractedWord[]): Promise<ExtractedWord
   })
 
   const response = await stream.finalMessage()
+  await recordUsage('verify', MODEL, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') throw new Error('The check was declined.')
 
   const text = response.content.find((block) => block.type === 'text')

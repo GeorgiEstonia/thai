@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 import type { WordRecord } from '@/content/items'
+import { recordUsage, tokensFrom } from './usage'
 
 /**
  * Generates vocabulary on a topic, pitched at the level of what you already
@@ -93,6 +94,7 @@ export async function generateWords(
   })
 
   const response = await stream.finalMessage()
+  await recordUsage('generate words', 'claude-opus-5', tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') throw new Error('The request was declined.')
 
   const text = response.content.find((block) => block.type === 'text')

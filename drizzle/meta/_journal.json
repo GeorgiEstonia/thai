@@ -15,6 +15,13 @@
       "when": 1788746000284,
       "tag": "0001_graceful_nightshade",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788746729205,
+      "tag": "0002_chemical_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

@@ -201,3 +201,29 @@ export const reviewLog = pgTable('review_log', {
     .notNull()
     .defaultNow(),
 })
+
+/**
+ * What each call to the model cost.
+ *
+ * Recorded by the app rather than read back from Anthropic: the organisation
+ * cost report needs an admin credential this app does not have, and would
+ * report the whole account rather than this one deck. Every model call in here
+ * goes through one place, so metering it there is both exact and free.
+ *
+ * Cost is stored in millionths of a dollar. A cent is too coarse — a single
+ * describe call lands well under one — and a float would drift once summed
+ * over thousands of rows.
+ */
+export const apiUsage = pgTable('api_usage', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  at: timestamp('at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  /** Which job spent it: reading a page, writing examples, verifying, ... */
+  operation: text('operation').notNull(),
+  model: text('model').notNull(),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+  cacheWriteTokens: integer('cache_write_tokens').notNull().default(0),
+  /** Millionths of a US dollar, at the prices in lib/usage.ts. */
+  costMicros: integer('cost_micros').notNull().default(0),
+})

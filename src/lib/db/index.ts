@@ -43,6 +43,17 @@ export function __setTestDb(db: Db | null): void {
  * that stays the source of truth, and is what the tests apply.
  */
 const ADDITIVE_COLUMNS = [
+  `create table if not exists "api_usage" (
+     "id" bigserial primary key,
+     "at" timestamp with time zone default now() not null,
+     "operation" text not null,
+     "model" text not null,
+     "input_tokens" integer default 0 not null,
+     "output_tokens" integer default 0 not null,
+     "cache_read_tokens" integer default 0 not null,
+     "cache_write_tokens" integer default 0 not null,
+     "cost_micros" integer default 0 not null
+   )`,
   `alter table "words" add column if not exists "example_thai" text`,
   `alter table "words" add column if not exists "example_ipa" text`,
   `alter table "words" add column if not exists "example_english" text`,
