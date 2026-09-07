@@ -22,6 +22,7 @@ import {
   currentEntry,
   dropFromSession,
   gradeCurrent,
+  toPriority,
 } from '@/lib/srs'
 
 import { type PendingGrade, enqueue, flushPending, readPending } from '@/lib/pending'
@@ -30,6 +31,7 @@ import { speechTextFor, useSpeech } from '@/lib/speech'
 import GlyphFaces from '@/components/GlyphFaces'
 
 import CardEditor from './CardEditor'
+import PriorityControl from './PriorityControl'
 import MnemonicEditor from './MnemonicEditor'
 
 import { gradeCard, saveMnemonic } from './actions'
@@ -171,12 +173,23 @@ function Card({
   onReveal: () => void
   children: React.ReactNode
 }) {
-  const className = 'flex-1 flex flex-col items-center justify-center text-center'
-
-  if (revealed) return <div className={className}>{children}</div>
+  // Once flipped the card can run long — answer, example, usage note,
+  // mnemonic, controls — so it is laid out as ordinary flowing content and the
+  // page scrolls. The grade buttons are pinned separately, which is what keeps
+  // them reachable without making this a scroll container of its own (a nested
+  // scroller inside a page that also scrolls is worse than either).
+  if (revealed) {
+    // Bottom padding clears the pinned footer, so the last controls can be
+    // scrolled fully into view instead of sitting permanently underneath it.
+    return <div className="flex flex-col items-center pb-4 text-center">{children}</div>
+  }
 
   return (
-    <button onClick={onReveal} className={className} aria-label="Reveal answer">
+    <button
+      onClick={onReveal}
+      className="flex-1 flex flex-col items-center justify-center text-center"
+      aria-label="Reveal answer"
+    >
       {children}
     </button>
   )
@@ -290,7 +303,10 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
 
     const parsed = parseCardKey(entry.id)
     const answeredAt = new Date()
-    const result = gradeCurrent(session, g, state, answeredAt)
+    // Same priority the server will apply, so the interval shown in the
+    // summary is the interval that was actually stored.
+    const priority = card.item.type === 'word' ? toPriority(card.item.word.priority) : 0
+    const result = gradeCurrent(session, g, state, answeredAt, priority)
 
     if (result.scheduling) {
       setStates((prev) => new Map(prev).set(entry.id, result.scheduling!.after))
@@ -374,7 +390,7 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   const hint = direction === 'produce' ? produceHint(item) : null
 
   return (
-    <main className="flex-1 flex flex-col px-5 pb-6 pt-4 max-w-md w-full mx-auto">
+    <main className="flex-1 flex flex-col min-h-0 px-5 pb-6 pt-4 max-w-md w-full mx-auto">
       <header className="flex items-center justify-between text-xs text-muted">
         <span>{session.queue.length} left</span>
         <span className="font-mono">{directionLabel}</span>
@@ -486,6 +502,35 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
               </div>
             )}
 
+            {/* IN USE — the sentence. A gloss says what a word means; this is
+                the part that says how to use it, which for a classifier or a
+                particle is the only part that matters. */}
+            {item.type === 'word' && item.word.exampleThai ? (
+              <div className="rounded-xl bg-surface px-3 py-3 text-left">
+                <p className="text-[10px] uppercase tracking-widest text-muted">In use</p>
+                <p className="thai mt-2 text-xl leading-relaxed">{item.word.exampleThai}</p>
+                {item.word.exampleIpa ? (
+                  <p className="mt-1 font-mono text-xs text-muted">/{item.word.exampleIpa}/</p>
+                ) : null}
+                {item.word.exampleEnglish ? (
+                  <p className="mt-1 text-sm">{item.word.exampleEnglish}</p>
+                ) : null}
+                <button
+                  onClick={() => speech.speak(item.word.exampleThai ?? '')}
+                  className="mt-3 text-xs text-muted underline underline-offset-4"
+                >
+                  <span aria-hidden>🔊</span> hear the sentence
+                </button>
+              </div>
+            ) : null}
+
+            {item.type === 'word' && item.word.context ? (
+              <div className="rounded-xl border border-edge px-3 py-3 text-left">
+                <p className="text-[10px] uppercase tracking-widest text-muted">Good to know</p>
+                <p className="mt-2 text-sm leading-relaxed">{item.word.context}</p>
+              </div>
+            ) : null}
+
             {card.note ? (
               <p className="rounded-xl bg-surface px-3 py-3 text-sm leading-relaxed">
                 {card.note}
@@ -556,6 +601,16 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
               />
             </div>
 
+            {item.type === 'word' ? (
+              <div className="border-t border-edge pt-4">
+                <PriorityControl
+                  key={card.key}
+                  wordId={item.id}
+                  initial={item.word.priority ?? 0}
+                />
+              </div>
+            ) : null}
+
             {/* Only vocabulary. Consonants and vowels are authored content —
                 the same for every session, and not yours to delete from here. */}
             {item.type === 'word' ? (
@@ -584,38 +639,45 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
         )}
       </Card>
 
-      {/* Outside the card on purpose. While unrevealed the card is itself one
-          big <button>, and a button nested in a button is invalid HTML — it
-          breaks hydration and takes the whole page's interactivity with it. */}
-      {spokenText ? (
-        <div className="mt-4 flex justify-center">
-          <button
-            onClick={() => speech.speak(spokenText)}
-            className="rounded-full border border-edge px-4 py-2 text-xs text-muted"
-          >
-            <span aria-hidden>🔊</span> hear it again
-          </button>
-        </div>
-      ) : null}
+      {/* Pinned. Answering is the thing you came to do, so it must never be
+          somewhere you have to scroll to find — the example and the usage note
+          can be long, and they sit above this rather than in front of it.
 
-      {revealed ? (
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <button
-            onClick={() => grade('missed')}
-            className="rounded-2xl border border-edge py-5 text-base font-medium"
-          >
-            Missed it
-          </button>
-          <button
-            onClick={() => grade('got')}
-            className="rounded-2xl bg-foreground py-5 text-base font-medium text-background"
-          >
-            Got it
-          </button>
-        </div>
-      ) : (
-        <div className="mt-6 h-[76px]" aria-hidden />
-      )}
+          Outside the card element on purpose, too: while unrevealed the card is
+          itself one big <button>, and a button nested in a button is invalid
+          HTML that breaks hydration and takes the page's interactivity with
+          it. */}
+      <div className="sticky bottom-0 -mx-5 mt-6 bg-background px-5 pb-1 pt-3">
+        {spokenText ? (
+          <div className="mb-3 flex justify-center">
+            <button
+              onClick={() => speech.speak(spokenText)}
+              className="rounded-full border border-edge px-4 py-2 text-xs text-muted"
+            >
+              <span aria-hidden>🔊</span> hear it again
+            </button>
+          </div>
+        ) : null}
+
+        {revealed ? (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => grade('missed')}
+              className="rounded-2xl border border-edge py-5 text-base font-medium"
+            >
+              Missed it
+            </button>
+            <button
+              onClick={() => grade('got')}
+              className="rounded-2xl bg-foreground py-5 text-base font-medium text-background"
+            >
+              Got it
+            </button>
+          </div>
+        ) : (
+          <div className="h-[76px]" aria-hidden />
+        )}
+      </div>
     </main>
   )
 }

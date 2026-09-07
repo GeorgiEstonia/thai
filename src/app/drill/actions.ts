@@ -5,8 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { type Direction, type ItemType, findItem } from '@/content/items'
 import { requireAuth } from '@/lib/auth'
 import { loadOneState, recordReview } from '@/lib/mutations'
-import { type Grade, applyGrade, newState } from '@/lib/srs'
-import { deleteWord, saveNote, updateWord } from '@/lib/words'
+import { type Grade, applyGrade, newState, toPriority } from '@/lib/srs'
+import { deleteWord, listWords, saveNote, setWordPriority, updateWord } from '@/lib/words'
 
 /**
  * Grades one showing.
@@ -32,13 +32,21 @@ export async function gradeCard(
   const now = new Date()
   const before = (await loadOneState(itemType, itemId, direction)) ?? newState(now)
 
+  // How often you asked to see this one. Read here rather than trusted from
+  // the browser, for the same reason the schedule is: the client says which
+  // card and which button, never what the answer is worth.
+  const priority =
+    itemType === 'word'
+      ? toPriority((await listWords()).find((word) => word.id === itemId)?.priority)
+      : 0
+
   await recordReview({
     itemType,
     itemId,
     direction,
     grade,
     // A reinforcement showing is logged but must not move the due date.
-    scheduling: reinforcement ? null : { before, after: applyGrade(before, grade, now) },
+    scheduling: reinforcement ? null : { before, after: applyGrade(before, grade, now, priority) },
     intervalAtShowing: before.intervalDays,
     reviewedAt: now,
   })
@@ -73,6 +81,14 @@ export async function editDrillWord(
 export async function removeDrillWord(id: string): Promise<void> {
   await requireAuth()
   await deleteWord(id)
+  revalidatePath('/words')
+  revalidatePath('/words/practice')
+}
+
+/** Sets how often a word comes round: 1 more, -1 less, 0 the normal schedule. */
+export async function prioritiseWord(id: string, priority: number): Promise<void> {
+  await requireAuth()
+  await setWordPriority(id, priority)
   revalidatePath('/words')
   revalidatePath('/words/practice')
 }

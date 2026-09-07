@@ -49,14 +49,50 @@ export function addDays(from: Date, days: number): Date {
   return new Date(from.getTime() + days * MS_PER_DAY)
 }
 
-export function nextInterval(current: number, grade: Grade): number {
-  if (grade === 'missed') return 0
-  if (current <= 0) return 1
-  return Math.min(current * 2, MAX_INTERVAL_DAYS)
+/**
+ * How often you asked to see a card: 1 more than usual, -1 less, 0 normal.
+ *
+ * A level rather than a nudge. A nudge that shifts the schedule a little each
+ * time it is tapped compounds invisibly — three taps over three weeks and you
+ * can no longer tell what you did or undo it. A level is shown on the card,
+ * set with one tap, and cleared with another.
+ */
+export type Priority = -1 | 0 | 1
+
+/** A word you want more of comes back twice as soon; one you want less of,
+ *  twice as late. Applied to the result, so the doubling ladder is intact and
+ *  only its spacing shifts. */
+const PRIORITY_FACTOR: Record<Priority, number> = { 1: 0.5, 0: 1, [-1]: 2 }
+
+/** A card you asked to see more of should stay in circulation rather than
+ *  drifting out to six months like everything else. */
+const FOCUS_MAX_INTERVAL_DAYS = 21
+
+export function toPriority(value: number | undefined | null): Priority {
+  if (value === undefined || value === null) return 0
+  return value > 0 ? 1 : value < 0 ? -1 : 0
 }
 
-export function applyGrade(state: SrsState, grade: Grade, now: Date): SrsState {
-  const intervalDays = nextInterval(state.intervalDays, grade)
+export function nextInterval(current: number, grade: Grade, priority: Priority = 0): number {
+  if (grade === 'missed') return 0
+  if (current <= 0) return 1
+
+  const doubled = current * 2
+  const adjusted = Math.round(doubled * PRIORITY_FACTOR[priority])
+  const ceiling = priority === 1 ? FOCUS_MAX_INTERVAL_DAYS : MAX_INTERVAL_DAYS
+
+  // Never below a day: the interval is in whole days, and rounding a short
+  // interval down to zero would read as a miss.
+  return Math.min(Math.max(adjusted, 1), ceiling)
+}
+
+export function applyGrade(
+  state: SrsState,
+  grade: Grade,
+  now: Date,
+  priority: Priority = 0,
+): SrsState {
+  const intervalDays = nextInterval(state.intervalDays, grade, priority)
   return {
     intervalDays,
     // A missed card is due again right away; the session queue is what stops
@@ -209,6 +245,7 @@ export function gradeCurrent(
   grade: Grade,
   state: SrsState,
   now: Date,
+  priority: Priority = 0,
 ): GradeResult {
   const entry = currentEntry(session)
   if (!entry) return { session, scheduling: null }
@@ -236,7 +273,7 @@ export function gradeCurrent(
     session: { queue, reinforcementCounts, completed },
     scheduling: entry.reinforcement
       ? null
-      : { id: entry.id, before: state, after: applyGrade(state, grade, now) },
+      : { id: entry.id, before: state, after: applyGrade(state, grade, now, priority) },
   }
 }
 

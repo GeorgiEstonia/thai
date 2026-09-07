@@ -2,11 +2,15 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { type ItemType, type WordRecord, wordItem } from '@/content/items'
 
-import { getDb, schema } from './db'
+import { ensureSchema, getDb, schema } from './db'
 
 /** Vocabulary: the part of the deck that is yours rather than authored. */
 
 export async function listWords(): Promise<WordRecord[]> {
+  // Everything vocabulary-related goes through here, which makes it the right
+  // place to be sure the columns the code selects actually exist.
+  await ensureSchema()
+
   const rows = await getDb().select().from(schema.words).orderBy(desc(schema.words.createdAt))
   return rows.map((row) => ({
     id: row.id,
@@ -16,7 +20,46 @@ export async function listWords(): Promise<WordRecord[]> {
     kind: row.kind,
     pack: row.pack,
     notes: row.notes,
+    exampleThai: row.exampleThai,
+    exampleIpa: row.exampleIpa,
+    exampleEnglish: row.exampleEnglish,
+    context: row.context,
+    priority: row.priority,
   }))
+}
+
+/** Sets how often a word should come round: 1 more, -1 less, 0 normal. */
+export async function setWordPriority(id: string, priority: number): Promise<void> {
+  await ensureSchema()
+  const clamped = priority > 0 ? 1 : priority < 0 ? -1 : 0
+  await getDb().update(schema.words).set({ priority: clamped }).where(eq(schema.words.id, id))
+}
+
+export interface WordDescription {
+  exampleThai: string
+  exampleIpa: string
+  exampleEnglish: string
+  context: string | null
+}
+
+/** Files the example sentence and usage note written for a word. */
+export async function describeWord(id: string, described: WordDescription): Promise<void> {
+  await ensureSchema()
+  await getDb()
+    .update(schema.words)
+    .set({
+      exampleThai: described.exampleThai.trim() || null,
+      exampleIpa: described.exampleIpa.trim() || null,
+      exampleEnglish: described.exampleEnglish.trim() || null,
+      context: described.context?.trim() || null,
+    })
+    .where(eq(schema.words.id, id))
+}
+
+/** Vocabulary with no example yet — what the backfill still has to do. */
+export async function wordsNeedingDescription(limit: number): Promise<WordRecord[]> {
+  const all = await listWords()
+  return all.filter((word) => !word.exampleThai).slice(0, limit)
 }
 
 export async function listWordItems() {

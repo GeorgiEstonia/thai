@@ -43,6 +43,14 @@ export interface WordRecord {
   /** Free-text grouping, e.g. a textbook chapter. Null means ungrouped. */
   pack: string | null
   notes: string | null
+  /** One sentence showing the word in use. Null until it has been written. */
+  exampleThai?: string | null
+  exampleIpa?: string | null
+  exampleEnglish?: string | null
+  /** Usage, register, pitfalls — what a teacher would tell you. */
+  context?: string | null
+  /** 1 = show more often, -1 = less often, 0 = the normal schedule. */
+  priority?: number
 }
 
 /** Selection group id for a pack — packs are selectable just like phonemes. */

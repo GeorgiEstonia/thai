@@ -5,12 +5,13 @@ import type { ExtractedWord } from './db/schema'
 import {
   composePhrases,
   dedupe,
+  describeWords,
   extractWords,
   isSafeToAdd,
   sortForReview,
   verifyItems,
 } from './extract'
-import { addWords } from './words'
+import { addWords, describeWord, wordsNeedingDescription } from './words'
 
 /**
  * Photographed pages, read one page per request.
@@ -189,6 +190,30 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
           worksheetId,
         })),
       )
+
+      // Write examples for what just landed, so an imported card is complete
+      // the first time you meet it rather than a bare gloss. Bounded and
+      // best-effort: an import that has already filed its vocabulary must not
+      // fail because the example writer had a bad minute.
+      try {
+        const fresh = await wordsNeedingDescription(safe.length)
+        const described = await describeWords(
+          fresh.map((word) => ({
+            thai: word.thai,
+            ipa: word.ipa,
+            english: word.english,
+            kind: word.kind,
+            notes: word.notes,
+          })),
+        )
+        const byThai = new Map(described.map((entry) => [entry.thai.trim(), entry]))
+        for (const word of fresh) {
+          const found = byThai.get(word.thai.trim())
+          if (found) await describeWord(word.id, found)
+        }
+      } catch {
+        // The backfill runner picks these up next time the app is opened.
+      }
     }
 
     const marked = checked.map((item) => ({ ...item, added: isSafeToAdd(item) }))

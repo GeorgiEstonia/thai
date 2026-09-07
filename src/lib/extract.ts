@@ -85,6 +85,115 @@ const PHRASE_SCHEMA = {
   additionalProperties: false,
 } as const
 
+const DESCRIBE_SYSTEM = `You write the note a good teacher would put next to a
+Thai vocabulary item.
+
+For each item you are given, return an example sentence and a context note.
+
+The example sentence:
+- Must actually use the item, in a sentence someone would really say.
+- Should be short enough to say out loud comfortably.
+- Should show the item doing its job. This matters most for the items whose
+  English gloss is a label rather than a meaning: for a classifier, show it
+  counting something ("Can I have three plates of pad kraphao?"); for a
+  particle, show what it does to the sentence; for a preposition or a verb of
+  motion, show the frame it lives in.
+- Give Thai, IPA, and a natural English translation. Use IPA with c/cʰ for จ
+  and ฉ/ช, ː for long vowels, and tone marks — matching the notation already
+  used on the item where it has one.
+
+The context note is what a learner would otherwise have to ask about. Include
+whatever is true and useful, and nothing that isn't:
+- what the item is FOR, when the gloss doesn't say (classifiers, particles)
+- register: polite, blunt, slang, written-only, who says it to whom
+- the male/female speaker difference where there is one (ครับ / ค่ะ)
+- a classifier a noun takes
+- a literal reading when it makes the word memorable
+- a near-synonym it is confused with, and the difference
+- false friends for an English speaker
+
+Rules:
+- Never invent Thai. If you are not confident the sentence is natural, correct
+  Thai, return an empty example rather than a wrong one.
+- For an item that is already a full phrase or sentence, the example may show a
+  close variation or a reply it would get, rather than repeating it.
+- Keep the context note to one or two sentences. It is read on the back of a
+  flashcard, not in a dictionary.
+- Write the note in English.
+- Return null for context only when there is genuinely nothing worth saying.`
+
+const DESCRIBE_SCHEMA = {
+  type: 'object',
+  properties: {
+    described: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          thai: { type: 'string' },
+          exampleThai: { type: 'string' },
+          exampleIpa: { type: 'string' },
+          exampleEnglish: { type: 'string' },
+          context: { type: ['string', 'null'] },
+        },
+        required: ['thai', 'exampleThai', 'exampleIpa', 'exampleEnglish', 'context'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['described'],
+  additionalProperties: false,
+} as const
+
+export interface DescribeInput {
+  thai: string
+  ipa: string
+  english: string
+  kind: 'word' | 'phrase'
+  notes?: string | null
+}
+
+export interface Described {
+  thai: string
+  exampleThai: string
+  exampleIpa: string
+  exampleEnglish: string
+  context: string | null
+}
+
+/**
+ * Writes an example sentence and a usage note for each item.
+ *
+ * A gloss tells you what a word means. It does not tell you how to say
+ * anything with it — and the gap is widest exactly where Thai is hardest for
+ * an English speaker: classifiers, particles, politeness. "Classifier for flat
+ * things" is a label; the sentence that counts three plates of food is the
+ * thing you can actually use.
+ */
+export async function describeWords(items: DescribeInput[]): Promise<Described[]> {
+  if (items.length === 0) return []
+
+  const client = new Anthropic()
+  const stream = client.messages.stream({
+    model: 'claude-opus-5',
+    max_tokens: 16000,
+    system: DESCRIBE_SYSTEM,
+    output_config: { format: { type: 'json_schema', schema: DESCRIBE_SCHEMA } },
+    messages: [{ role: 'user', content: JSON.stringify({ items }) }],
+  })
+
+  const response = await stream.finalMessage()
+  if (response.stop_reason === 'refusal') return []
+
+  const text = response.content.find((block) => block.type === 'text')
+  if (!text || text.type !== 'text') return []
+
+  const parsed = JSON.parse(text.text) as { described: Described[] }
+
+  // Drop anything the model left empty rather than filing a blank example.
+  return parsed.described.filter((entry) => entry.exampleThai.trim() !== '')
+}
+
 const VERIFY_SYSTEM = `You are checking material before it is added to a Thai
 learner's deck unseen.
 

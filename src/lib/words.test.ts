@@ -10,6 +10,7 @@ import { selectedItems } from './practice'
 import {
   addWords,
   countDuplicateWords,
+  describeWord,
   deleteWord,
   listPacks,
   listWordItems,
@@ -17,6 +18,8 @@ import {
   loadNotes,
   removeDuplicateWords,
   saveNote,
+  setWordPriority,
+  wordsNeedingDescription,
 } from './words'
 
 const client = new PGlite()
@@ -309,5 +312,88 @@ describe('duplicate vocabulary', () => {
 
     expect(await removeDuplicateWords()).toEqual({ removed: 0, kept: 2 })
     expect(await listWords()).toHaveLength(2)
+  })
+})
+
+describe('examples and priority', () => {
+  const KIN = { thai: 'กิน', ipa: 'gin', english: 'to eat', source: 'worksheet' as const }
+
+  it('files an example sentence and a usage note against a word', async () => {
+    const [id] = await addWords([KIN])
+    await describeWord(id, {
+      exampleThai: 'ผมกินข้าวแล้ว',
+      exampleIpa: 'pʰǒm gin kʰâːw lɛ́ːw',
+      exampleEnglish: 'I have already eaten.',
+      context: 'Everyday register.',
+    })
+
+    const [word] = await listWords()
+    expect(word.exampleThai).toBe('ผมกินข้าวแล้ว')
+    expect(word.exampleIpa).toBe('pʰǒm gin kʰâːw lɛ́ːw')
+    expect(word.exampleEnglish).toBe('I have already eaten.')
+    expect(word.context).toBe('Everyday register.')
+  })
+
+  it('stores an empty context as nothing rather than an empty string', async () => {
+    const [id] = await addWords([KIN])
+    await describeWord(id, {
+      exampleThai: 'กินข้าว',
+      exampleIpa: 'gin kʰâːw',
+      exampleEnglish: 'to eat',
+      context: '   ',
+    })
+
+    expect((await listWords())[0].context).toBeNull()
+  })
+
+  it('lists only what still has no example', async () => {
+    const [first] = await addWords([KIN])
+    await addWords([{ thai: 'ข้าว', ipa: 'kʰâːw', english: 'rice', source: 'worksheet' }])
+
+    expect(await wordsNeedingDescription(10)).toHaveLength(2)
+
+    await describeWord(first, {
+      exampleThai: 'กินข้าว',
+      exampleIpa: 'gin kʰâːw',
+      exampleEnglish: 'eat rice',
+      context: null,
+    })
+
+    const left = await wordsNeedingDescription(10)
+    expect(left).toHaveLength(1)
+    expect(left[0].thai).toBe('ข้าว')
+  })
+
+  it('honours the batch limit so a backfill can be done in pieces', async () => {
+    await addWords([
+      KIN,
+      { thai: 'ข้าว', ipa: '', english: 'rice', source: 'worksheet' },
+      { thai: 'น้ำ', ipa: '', english: 'water', source: 'worksheet' },
+    ])
+    expect(await wordsNeedingDescription(2)).toHaveLength(2)
+  })
+
+  it('starts every word on the normal schedule', async () => {
+    await addWords([KIN])
+    expect((await listWords())[0].priority).toBe(0)
+  })
+
+  it('records that a word should come round more or less often', async () => {
+    const [id] = await addWords([KIN])
+
+    await setWordPriority(id, 1)
+    expect((await listWords())[0].priority).toBe(1)
+
+    await setWordPriority(id, -1)
+    expect((await listWords())[0].priority).toBe(-1)
+
+    await setWordPriority(id, 0)
+    expect((await listWords())[0].priority).toBe(0)
+  })
+
+  it('clamps anything out of range to a level it understands', async () => {
+    const [id] = await addWords([KIN])
+    await setWordPriority(id, 99)
+    expect((await listWords())[0].priority).toBe(1)
   })
 })

@@ -19,6 +19,7 @@ import {
   isLeech,
   newState,
   nextInterval,
+  toPriority,
   unlockedBatches,
 } from './srs'
 
@@ -293,5 +294,48 @@ describe('dropFromSession with several ids', () => {
 
     const after = dropFromSession(session, 'word:a:recognise', 'word:a:produce')
     expect(after.queue.map((entry) => entry.id)).toEqual(['word:b:recognise'])
+  })
+})
+
+describe('priority', () => {
+  it('leaves the normal ladder exactly as it was', () => {
+    expect(nextInterval(0, 'got', 0)).toBe(1)
+    expect(nextInterval(1, 'got', 0)).toBe(2)
+    expect(nextInterval(2, 'got', 0)).toBe(4)
+    expect(nextInterval(4, 'got', 0)).toBe(8)
+  })
+
+  it('brings a focused card back twice as soon', () => {
+    expect(nextInterval(4, 'got', 1)).toBe(4)
+    expect(nextInterval(8, 'got', 1)).toBe(8)
+  })
+
+  it('pushes a de-prioritised card out twice as far', () => {
+    expect(nextInterval(4, 'got', -1)).toBe(16)
+  })
+
+  it('never lets a focused card drift out of circulation', () => {
+    expect(nextInterval(90, 'got', 1)).toBe(21)
+  })
+
+  it('still caps everything else at the ordinary ceiling', () => {
+    expect(nextInterval(120, 'got', -1)).toBe(MAX_INTERVAL_DAYS)
+  })
+
+  it('never rounds an interval down to nothing, which would read as a miss', () => {
+    expect(nextInterval(1, 'got', 1)).toBe(1)
+  })
+
+  it('resets on a miss whatever the priority', () => {
+    for (const priority of [-1, 0, 1] as const) {
+      expect(nextInterval(16, 'missed', priority)).toBe(0)
+    }
+  })
+
+  it('reads a stored value into a level, tolerating null', () => {
+    expect(toPriority(null)).toBe(0)
+    expect(toPriority(undefined)).toBe(0)
+    expect(toPriority(5)).toBe(1)
+    expect(toPriority(-3)).toBe(-1)
   })
 })

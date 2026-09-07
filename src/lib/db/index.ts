@@ -1,3 +1,4 @@
+import { sql as raw } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
@@ -26,6 +27,51 @@ let testDb: Db | null = null
 
 export function __setTestDb(db: Db | null): void {
   testDb = db
+  schemaReady = null
+}
+
+/**
+ * Columns added after the production database was created, applied by the app.
+ *
+ * This exists because there is no way to run a migration against the hosted
+ * database from here — and shipping code that selects a column the database
+ * does not have takes every screen down, which has happened once already. Each
+ * statement is additive and idempotent, so running it repeatedly costs one
+ * round trip and changes nothing.
+ *
+ * Adding a column here is not a substitute for the migration in drizzle/ —
+ * that stays the source of truth, and is what the tests apply.
+ */
+const ADDITIVE_COLUMNS = [
+  `alter table "words" add column if not exists "example_thai" text`,
+  `alter table "words" add column if not exists "example_ipa" text`,
+  `alter table "words" add column if not exists "example_english" text`,
+  `alter table "words" add column if not exists "context" text`,
+  `alter table "words" add column if not exists "priority" integer default 0 not null`,
+]
+
+let schemaReady: Promise<void> | null = null
+
+/**
+ * Makes sure the columns the code expects exist before anything reads them.
+ *
+ * Memoised, so it is one round trip per server process rather than per query.
+ * A failure is not cached: a database that was briefly unreachable should be
+ * retried rather than leaving the process convinced the schema is missing.
+ */
+export function ensureSchema(): Promise<void> {
+  if (!schemaReady) {
+    const db = getDb()
+    schemaReady = (async () => {
+      for (const statement of ADDITIVE_COLUMNS) {
+        await db.execute(raw.raw(statement))
+      }
+    })().catch((error) => {
+      schemaReady = null
+      throw error
+    })
+  }
+  return schemaReady
 }
 
 export function getDb(): Db {

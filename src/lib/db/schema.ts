@@ -60,6 +60,26 @@ export const words = pgTable('words', {
   /** Anything else worth keeping — usage, register, who said it. */
   notes: text('notes'),
   source: text('source', { enum: ['manual', 'worksheet'] }).notNull(),
+  /**
+   * One short sentence showing the word actually being used.
+   *
+   * A gloss tells you what a word means; it does not tell you how to say
+   * anything with it. That gap is widest exactly where Thai is hardest for an
+   * English speaker — classifiers, particles, politeness — where the
+   * translation is a label ("classifier for flat things") and the only useful
+   * knowledge is the shape of the sentence it appears in.
+   */
+  exampleThai: text('example_thai'),
+  exampleIpa: text('example_ipa'),
+  exampleEnglish: text('example_english'),
+  /** What you would want a teacher to tell you: register, usage, pitfalls. */
+  context: text('context'),
+  /**
+   * How often you want to see this, set by you: 1 more often, -1 less often,
+   * 0 the normal schedule. A level rather than a nudge, so it is visible on
+   * the card and can be undone.
+   */
+  priority: integer('priority').notNull().default(0),
   worksheetId: uuid('worksheet_id'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
     .notNull()
