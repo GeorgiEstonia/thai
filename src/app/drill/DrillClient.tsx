@@ -26,7 +26,7 @@ import {
 } from '@/lib/srs'
 
 import { type PendingGrade, enqueue, flushPending, readPending } from '@/lib/pending'
-import { speechTextFor, useSpeech } from '@/lib/speech'
+import { soundRevealsAnswer, speechTextFor, useSpeech } from '@/lib/speech'
 
 import GlyphFaces from '@/components/GlyphFaces'
 
@@ -277,7 +277,19 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   // leads with Thai, and on the flip when it leads with English or IPA. Tying
   // it to "is the Thai visible" rather than to a direction means one rule
   // covers every card type.
-  const thaiVisible = Boolean(card) && (card!.direction === 'recognise' || revealed)
+  //
+  // A card leading with Thai normally speaks straight away — but for a letter
+  // or a vowel read towards its sound, the audio IS the answer. Hearing กอ ไก่
+  // before you have recalled /k/ turns a recall test into a listening one, so
+  // those stay silent until flipped, and the replay button is withheld too:
+  // a button that hands you the answer is not a choice worth offering.
+  //
+  // A word is different. Hearing บ้าน does not tell you it means "house", so
+  // there the sound is a help rather than a giveaway and plays on sight.
+  const soundIsTheAnswer = card !== undefined && soundRevealsAnswer(card.item, card.direction)
+
+  const thaiVisible =
+    Boolean(card) && (revealed || (card!.direction === 'recognise' && !soundIsTheAnswer))
   const spokenText = card && thaiVisible ? speechTextFor(card.item) : null
   const lastSpoken = useRef<string | null>(null)
 

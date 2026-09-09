@@ -3,6 +3,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { WordRecord } from '@/content/items'
 import { recordUsage, tokensFrom } from './usage'
 
+/** Inventing vocabulary for a topic is ordinary language work; see the model
+ *  table in lib/extract.ts for why that does not need the expensive model. */
+const GENERATE_MODEL = 'claude-sonnet-5'
+
 /**
  * Generates vocabulary on a topic, pitched at the level of what you already
  * know and excluding anything already in the deck.
@@ -77,10 +81,10 @@ export async function generateWords(
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: 'claude-opus-5',
+    model: GENERATE_MODEL,
     max_tokens: 16000,
     system: SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
     messages: [
       {
         role: 'user',
@@ -94,7 +98,7 @@ export async function generateWords(
   })
 
   const response = await stream.finalMessage()
-  await recordUsage('generate words', 'claude-opus-5', tokensFrom(response.usage))
+  await recordUsage('generate words', GENERATE_MODEL, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') throw new Error('The request was declined.')
 
   const text = response.content.find((block) => block.type === 'text')

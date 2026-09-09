@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { isAuthenticated } from '@/lib/auth'
-import { describeWords } from '@/lib/extract'
+import { DESCRIBE_BATCH, describeWords } from '@/lib/extract'
 import { describeWord, wordsNeedingDescription } from '@/lib/words'
 
 export const dynamic = 'force-dynamic'
@@ -14,14 +14,13 @@ export const maxDuration = 300
  * runs past the platform's function timeout and is killed with nothing saved —
  * the same failure that used to eat photo imports. Each call saves what it
  * wrote before returning, so progress survives a killed request and the caller
- * just asks again.
+ * just asks again. The size itself was measured; see DESCRIBE_BATCH.
  */
-const BATCH = 10
 
 export async function POST() {
   if (!(await isAuthenticated())) return NextResponse.json({ error: 'auth' }, { status: 401 })
 
-  const pending = await wordsNeedingDescription(BATCH)
+  const pending = await wordsNeedingDescription(DESCRIBE_BATCH)
   if (pending.length === 0) return NextResponse.json({ described: 0, remaining: 0 })
 
   let described = 0

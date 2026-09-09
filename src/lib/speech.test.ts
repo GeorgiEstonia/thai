@@ -4,7 +4,7 @@ import { CHARACTERS } from '@/content/characters'
 import { VOWELS } from '@/content/vowels'
 import { PRACTICE_ITEMS, wordItem } from '@/content/items'
 
-import { speechTextFor } from './speech'
+import { soundRevealsAnswer, speechTextFor } from './speech'
 
 /**
  * What gets spoken is not always what is printed on the card, and the cases
@@ -52,6 +52,39 @@ describe('speechTextFor', () => {
     expect(CHARACTERS.length + VOWELS.length).toBeGreaterThan(0)
     for (const item of PRACTICE_ITEMS) {
       expect(speechTextFor(item).trim()).not.toBe('')
+    }
+  })
+})
+
+describe('soundRevealsAnswer', () => {
+  const character = PRACTICE_ITEMS.find((item) => item.type === 'character')!
+  const vowel = PRACTICE_ITEMS.find((item) => item.type === 'vowel')!
+  const word = wordItem({
+    id: 'w1',
+    thai: 'บ้าน',
+    ipa: 'bâːn',
+    english: 'house',
+    kind: 'word',
+    pack: null,
+    notes: null,
+  })
+
+  it('holds back a letter read towards its sound — the audio is the answer', () => {
+    expect(soundRevealsAnswer(character, 'recognise')).toBe(true)
+  })
+
+  it('holds back a vowel read towards its sound for the same reason', () => {
+    expect(soundRevealsAnswer(vowel, 'recognise')).toBe(true)
+  })
+
+  it('speaks a word shown in Thai — the answer asked for is its meaning', () => {
+    expect(soundRevealsAnswer(word, 'recognise')).toBe(false)
+  })
+
+  it('never withholds on the producing side, where the Thai is the answer', () => {
+    // Nothing is spoken on that front anyway; once flipped, the sound helps.
+    for (const item of [character, vowel, word]) {
+      expect(soundRevealsAnswer(item, 'produce')).toBe(false)
     }
   })
 })

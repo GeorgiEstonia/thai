@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from 'react'
 
-import type { PracticeItem } from '@/content/items'
+import type { Direction, PracticeItem } from '@/content/items'
 
 /**
  * Thai pronunciation, spoken by the device.
@@ -141,6 +141,21 @@ export function speechTextFor(item: PracticeItem): string {
   if (item.type === 'vowel') return item.vowel.exampleThai
   if (item.type === 'character') return `${item.character.glyph}อ ${item.character.nameThai}`
   return item.thai
+}
+
+/**
+ * Would speaking this card give away what you are being asked for?
+ *
+ * A letter or a vowel practised towards its sound is exactly that case: the
+ * card shows ก and asks what it sounds like, so playing "กอ ไก่" answers the
+ * question before you have. Those stay silent until flipped.
+ *
+ * A word is not the same. Hearing บ้าน does not tell you it means "house" —
+ * the answer being asked for is the meaning, not the sound — so the audio is a
+ * help rather than a giveaway and can play on sight.
+ */
+export function soundRevealsAnswer(item: PracticeItem, direction: Direction): boolean {
+  return item.type !== 'word' && direction === 'recognise'
 }
 
 export interface Speech {

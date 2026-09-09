@@ -3,6 +3,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { getDb, schema } from './db'
 import type { ExtractedWord } from './db/schema'
 import {
+  DESCRIBE_BATCH,
   composePhrases,
   dedupe,
   describeWords,
@@ -196,7 +197,10 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
       // best-effort: an import that has already filed its vocabulary must not
       // fail because the example writer had a bad minute.
       try {
-        const fresh = await wordsNeedingDescription(safe.length)
+        // Capped: a big chapter can add sixty words at once, and describing
+        // them all in this one request would run it past the timeout. The
+        // backfill runner picks up whatever is left over.
+        const fresh = await wordsNeedingDescription(Math.min(safe.length, DESCRIBE_BATCH))
         const described = await describeWords(
           fresh.map((word) => ({
             thai: word.thai,

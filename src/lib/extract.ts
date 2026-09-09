@@ -3,8 +3,49 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedWord } from './db/schema'
 import { recordUsage, tokensFrom } from './usage'
 
-/** One place, so what is billed and what is recorded cannot drift apart. */
-const MODEL = 'claude-opus-5'
+/**
+ * Which model does which job, and how hard it is asked to think.
+ *
+ * Not one model for everything, because the jobs are not alike.
+ *
+ * Reading a photographed page is the one place an error is expensive and
+ * invisible: a misread vowel becomes a card you rehearse daily until something
+ * else contradicts it. That stays on Opus.
+ *
+ * Everything else is ordinary language work on text that has already been
+ * read — writing an example sentence, judging whether a line is real Thai,
+ * translating. Sonnet does that well at 40% of the price.
+ *
+ * Effort was measured too, and turned out not to matter much for these jobs:
+ * the answers are schema-bound, so low and medium produced near-identical
+ * output sizes ($0.00124 vs $0.00122 per item on a batch of 25). Given the
+ * cost is the same, they run at medium rather than low — there is no saving to
+ * buy by thinking less, so there is no reason to.
+ */
+/**
+ * How many items to describe in one call.
+ *
+ * Measured, not guessed. The instructions go out again on every call, so a
+ * bigger batch spreads that fixed cost over more items — but only on the input
+ * side, and the answers dominate the bill, so the curve flattens fast: ten
+ * items cost $0.00145 each, twenty-five $0.00122, a 16% saving for 2.5x the
+ * batch.
+ *
+ * Twenty-five is where it stops because the remaining upside is small and the
+ * downside is not: a batch is all-or-nothing within one request, so a larger
+ * one loses more work when a request is killed and runs longer against the
+ * platform's timeout. Sizes above 25 were not measured.
+ */
+export const DESCRIBE_BATCH = 25
+
+type Job = 'read' | 'describe' | 'phrases' | 'verify'
+
+const MODELS: Record<Job, { model: string; effort: 'low' | 'medium' | 'high' }> = {
+  read: { model: 'claude-opus-5', effort: 'high' },
+  describe: { model: 'claude-sonnet-5', effort: 'medium' },
+  phrases: { model: 'claude-sonnet-5', effort: 'medium' },
+  verify: { model: 'claude-sonnet-5', effort: 'medium' },
+}
 
 /**
  * Reads vocabulary off photographed textbook pages.
@@ -179,15 +220,18 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: MODEL,
+    model: MODELS.describe.model,
     max_tokens: 16000,
     system: DESCRIBE_SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: DESCRIBE_SCHEMA } },
+    output_config: {
+      effort: MODELS.describe.effort,
+      format: { type: 'json_schema', schema: DESCRIBE_SCHEMA },
+    },
     messages: [{ role: 'user', content: JSON.stringify({ items }) }],
   })
 
   const response = await stream.finalMessage()
-  await recordUsage('write examples', MODEL, tokensFrom(response.usage))
+  await recordUsage('write examples', MODELS.describe.model, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') return []
 
   const text = response.content.find((block) => block.type === 'text')
@@ -324,12 +368,15 @@ export async function extractWords(imageDataUrls: string[]): Promise<ExtractedWo
   // Streamed because the SDK refuses a non-streaming request whose max_tokens
   // could outrun the HTTP timeout, and a chapter needs a large budget.
   const stream = client.messages.stream({
-    model: MODEL,
-    // Opus 5 thinks by default and max_tokens caps thinking plus output
-    // together — a whole textbook chapter needs real headroom here.
+    model: MODELS.read.model,
+    // These models think before answering and max_tokens caps thinking plus
+    // output together — a whole textbook chapter needs real headroom here.
     max_tokens: 32000,
     system: SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+    output_config: {
+      effort: MODELS.read.effort,
+      format: { type: 'json_schema', schema: SCHEMA },
+    },
     messages: [
       {
         role: 'user',
@@ -357,7 +404,7 @@ export async function extractWords(imageDataUrls: string[]): Promise<ExtractedWo
   })
 
   const response = await stream.finalMessage()
-  await recordUsage('read page', MODEL, tokensFrom(response.usage))
+  await recordUsage('read page', MODELS.read.model, tokensFrom(response.usage))
 
   if (response.stop_reason === 'refusal') throw new Error('The request was declined.')
 
@@ -387,10 +434,13 @@ export async function composePhrases(words: ExtractedWord[]): Promise<ExtractedW
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: MODEL,
+    model: MODELS.phrases.model,
     max_tokens: 8000,
     system: PHRASE_SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: PHRASE_SCHEMA } },
+    output_config: {
+      effort: MODELS.phrases.effort,
+      format: { type: 'json_schema', schema: PHRASE_SCHEMA },
+    },
     messages: [
       {
         role: 'user',
@@ -407,7 +457,7 @@ export async function composePhrases(words: ExtractedWord[]): Promise<ExtractedW
   })
 
   const response = await stream.finalMessage()
-  await recordUsage('write phrases', MODEL, tokensFrom(response.usage))
+  await recordUsage('write phrases', MODELS.phrases.model, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') return []
 
   const text = response.content.find((block) => block.type === 'text')
@@ -437,10 +487,13 @@ export async function verifyItems(items: ExtractedWord[]): Promise<ExtractedWord
 
   const client = new Anthropic()
   const stream = client.messages.stream({
-    model: MODEL,
+    model: MODELS.verify.model,
     max_tokens: 32000,
     system: VERIFY_SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: VERIFY_SCHEMA } },
+    output_config: {
+      effort: MODELS.verify.effort,
+      format: { type: 'json_schema', schema: VERIFY_SCHEMA },
+    },
     messages: [
       {
         role: 'user',
@@ -459,7 +512,7 @@ export async function verifyItems(items: ExtractedWord[]): Promise<ExtractedWord
   })
 
   const response = await stream.finalMessage()
-  await recordUsage('verify', MODEL, tokensFrom(response.usage))
+  await recordUsage('verify', MODELS.verify.model, tokensFrom(response.usage))
   if (response.stop_reason === 'refusal') throw new Error('The check was declined.')
 
   const text = response.content.find((block) => block.type === 'text')
