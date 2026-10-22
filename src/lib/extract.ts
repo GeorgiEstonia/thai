@@ -344,24 +344,40 @@ export async function classifyTopic(words: { thai: string; english: string }[]):
   return topic ? topic.slice(0, 60) : null
 }
 
-const SORT_SYSTEM = `You sort a pile of Thai vocabulary into topics.
+const TOPIC_LIST_SYSTEM = `You choose the topics for a pile of Thai vocabulary.
 
-You are given a list of words and phrases that were imported without being
-grouped. Put each one into a topic, and return every item you were given.
+You are given the English meanings of words and phrases that were imported
+without being grouped. Return a list of topic names that between them cover
+the pile.
 
-- Invent the topics yourself from what is actually in the list. Two or three
-  words each, capitalised like a title: "Food and eating", "Family", "Numbers",
-  "Getting around", "Everyday verbs".
-- Aim for topics of roughly ten to forty items. Two or three items on their own
-  is not a topic; forty-plus means it should be split.
-- Sort by what the word is ABOUT, not by its part of speech. "Verbs" is only a
-  topic when the verbs have nothing else in common.
-- A word that fits nowhere goes in "General". Use that sparingly — it is the
-  pile this exercise exists to empty.
+- Two or three words each, capitalised like a title: "Food and eating",
+  "Family", "Numbers", "Getting around", "Everyday verbs".
+- Aim for topics that would hold roughly ten to forty of these items. Ten to
+  fifteen topics for a few hundred items is about right.
+- Name what the words are ABOUT. "Verbs" is only a topic when the verbs have
+  nothing else in common.
+- Include "General" last, for the ones that fit nowhere.
+- Return the names only. Nothing is being assigned yet.`
+
+const TOPIC_LIST_SCHEMA = {
+  type: 'object',
+  properties: { packs: { type: 'array', items: { type: 'string' } } },
+  required: ['packs'],
+  additionalProperties: false,
+} as const
+
+const SORT_SYSTEM = `You file Thai vocabulary under topics that already exist.
+
+You are given a list of topic names and a list of items. Put every item under
+one of those topics.
+
+- Use ONLY the topic names you were given, spelled exactly as given. Do not
+  invent a new one; anything that fits nowhere goes under "General".
+- Sort by what the word is about, not by its part of speech.
 - Keep a phrase with the topic of the words inside it.
-- Return the item's Thai EXACTLY as it was given to you, unchanged and with
-  nothing added. It is what the result is matched against, so an altered one is
-  an item that silently keeps no topic at all.`
+- Return every item you were given, and return its Thai EXACTLY as given —
+  unchanged, with nothing added. It is what the result is matched against, so
+  an altered one is an item that silently keeps no topic at all.`
 
 const SORT_SCHEMA = {
   type: 'object',
@@ -383,29 +399,57 @@ const SORT_SCHEMA = {
   additionalProperties: false,
 } as const
 
-/**
- * Sorts loose vocabulary into topics.
- *
- * Done in one call rather than in batches on purpose: the topics have to be
- * invented from the whole pile, and a model shown forty words at a time would
- * coin a fresh set of labels for each batch and leave the deck sorted into
- * near-duplicates of itself.
- */
-export async function sortIntoPacks(
-  words: { thai: string; english: string; kind: string }[],
-): Promise<{ thai: string; pack: string }[]> {
-  if (words.length === 0) return []
+/** Items assigned per call. Small enough to be quick, large enough that the
+ *  model can still see the shape of what it is filing. */
+const SORT_BATCH = 60
 
+export interface SortableWord {
+  thai: string
+  english: string
+  kind: string
+}
+
+async function chooseTopics(words: SortableWord[]): Promise<string[]> {
   const client = new Anthropic()
   const stream = client.messages.stream({
     model: MODELS.describe.model,
-    max_tokens: 32000,
+    max_tokens: 4000,
+    system: TOPIC_LIST_SYSTEM,
+    output_config: {
+      effort: MODELS.describe.effort,
+      format: { type: 'json_schema', schema: TOPIC_LIST_SCHEMA },
+    },
+    messages: [
+      { role: 'user', content: JSON.stringify({ meanings: words.map((w) => w.english) }) },
+    ],
+  })
+
+  const response = await stream.finalMessage()
+  await recordUsage('choose topics', MODELS.describe.model, tokensFrom(response.usage))
+  if (response.stop_reason === 'refusal') return []
+
+  const text = response.content.find((block) => block.type === 'text')
+  if (!text || text.type !== 'text') return []
+
+  const parsed = JSON.parse(text.text) as { packs: string[] }
+  const packs = parsed.packs.map((pack) => pack.trim()).filter(Boolean)
+  return packs.includes('General') ? packs : [...packs, 'General']
+}
+
+async function fileBatch(
+  words: SortableWord[],
+  packs: string[],
+): Promise<{ thai: string; pack: string }[]> {
+  const client = new Anthropic()
+  const stream = client.messages.stream({
+    model: MODELS.describe.model,
+    max_tokens: 16000,
     system: SORT_SYSTEM,
     output_config: {
       effort: MODELS.describe.effort,
       format: { type: 'json_schema', schema: SORT_SCHEMA },
     },
-    messages: [{ role: 'user', content: JSON.stringify({ items: words }) }],
+    messages: [{ role: 'user', content: JSON.stringify({ packs, items: words }) }],
   })
 
   const response = await stream.finalMessage()
@@ -417,6 +461,45 @@ export async function sortIntoPacks(
 
   const parsed = JSON.parse(text.text) as { sorted: { thai: string; pack: string }[] }
   return parsed.sorted.filter((entry) => entry.thai?.trim() && entry.pack?.trim())
+}
+
+/**
+ * Sorts loose vocabulary into topics, in two passes.
+ *
+ * The topics are chosen once, from the meanings of the whole pile, and the
+ * items are then filed against that fixed list in batches that run together.
+ *
+ * One call over everything was the obvious shape and the wrong one: a few
+ * hundred items in a single request ran for over ten minutes, far past the
+ * ceiling a serverless function gets, so in production it would simply have
+ * been killed. Splitting the filing is what makes it fast; fixing the topic
+ * list first is what stops each batch inventing its own near-duplicate labels.
+ */
+export async function sortIntoPacks(
+  words: SortableWord[],
+): Promise<{ thai: string; pack: string }[]> {
+  if (words.length === 0) return []
+
+  const packs = await chooseTopics(words)
+  if (packs.length === 0) return []
+
+  const batches: SortableWord[][] = []
+  for (let start = 0; start < words.length; start += SORT_BATCH) {
+    batches.push(words.slice(start, start + SORT_BATCH))
+  }
+
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      try {
+        return await fileBatch(batch, packs)
+      } catch {
+        // One batch failing leaves its words unsorted, not the whole run.
+        return []
+      }
+    }),
+  )
+
+  return results.flat()
 }
 
 const VERIFY_SYSTEM = `You are checking material before it is added to a Thai
