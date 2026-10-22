@@ -30,6 +30,17 @@ import { addWords, describeWord, wordsNeedingDescription } from './words'
 export const STALL_MS = 90 * 1000
 
 /**
+ * Pages read in one request, concurrently.
+ *
+ * Four, because the work is spent waiting on the model rather than on this
+ * machine, so they overlap almost completely — but a request still has to
+ * finish inside the platform's ceiling, and a request that dies loses every
+ * page in it rather than just one. Four keeps the worst case well short of
+ * the limit while cutting the round trips on a long import by three quarters.
+ */
+export const PAGES_PER_STEP = 4
+
+/**
  * How long a batch may sit in "uploading" before we assume the browser that
  * was sending it is gone.
  *
@@ -137,27 +148,41 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
       return { done: true, status: 'failed' }
     }
 
-    // Still pages to read: do exactly one.
+    // Still pages to read: take the next few, together.
+    //
+    // One page per request was costing a round trip and a cold start each,
+    // strictly in series — eight pages meant eight of them before anything
+    // was filed, which is most of why an import felt like it had stalled.
+    // These calls are waiting on the model, not on this machine, so running a
+    // handful at once collapses that without going near the time limit.
     if (sheet.pagesDone < pages) {
-      const index = sheet.pagesDone
-      const image = await loadPage(worksheetId, index)
-      if (!image) {
-        // The page never landed. Skip it rather than wedging the whole batch.
-        await db
-          .update(schema.worksheets)
-          .set({ pagesDone: index + 1, stepAt: new Date() })
-          .where(eq(schema.worksheets.id, worksheetId))
-        return { done: false, status: 'extracting' }
-      }
-      const found = await extractWords([image])
-      const merged = dedupe([...(sheet.extracted ?? []), ...found])
+      const first = sheet.pagesDone
+      const batch = Math.min(PAGES_PER_STEP, pages - first)
+      const indexes = Array.from({ length: batch }, (_, offset) => first + offset)
+
+      const images = await Promise.all(indexes.map((index) => loadPage(worksheetId, index)))
+
+      const results = await Promise.all(
+        images.map(async (image) => {
+          // A page that never landed is skipped rather than wedging the batch.
+          if (!image) return []
+          try {
+            return await extractWords([image])
+          } catch {
+            // One unreadable page must not cost the pages beside it.
+            return []
+          }
+        }),
+      )
+
+      const merged = dedupe([...(sheet.extracted ?? []), ...results.flat()])
 
       await db
         .update(schema.worksheets)
         .set({
           status: 'extracting',
           extracted: merged,
-          pagesDone: index + 1,
+          pagesDone: first + batch,
           stepAt: new Date(),
           error: null,
         })

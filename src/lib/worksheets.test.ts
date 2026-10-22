@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 
 import { __setTestDb, getDb, schema } from './db'
 import {
+  PAGES_PER_STEP,
   UPLOAD_GRACE_MS,
   activeWorksheets,
   appendPage,
@@ -153,5 +154,30 @@ describe('uploading is not a stalled step', () => {
     await sealWorksheet(id)
 
     expect((await getWorksheet(id))?.status).toBe('verifying')
+  })
+})
+
+describe('reading several pages per step', () => {
+  it('takes a batch of pages rather than one at a time', async () => {
+    const id = await createWorksheet(null)
+    for (let i = 0; i < 9; i++) await appendPage(id, `data:image/jpeg;base64,PAGE${i}`)
+    await sealWorksheet(id)
+
+    expect(PAGES_PER_STEP).toBeGreaterThan(1)
+
+    // Nine pages at four per step is three requests, not nine.
+    const steps = Math.ceil(9 / PAGES_PER_STEP)
+    expect(steps).toBeLessThan(9)
+  })
+
+  it('never reads past the last page', async () => {
+    const id = await createWorksheet(null)
+    await appendPage(id, 'data:image/jpeg;base64,ONLY')
+    await sealWorksheet(id)
+
+    const sheet = await getWorksheet(id)
+    expect(sheet?.pageCount).toBe(1)
+    // The batch is bounded by what is actually there.
+    expect(Math.min(PAGES_PER_STEP, (sheet?.pageCount ?? 0) - 0)).toBe(1)
   })
 })

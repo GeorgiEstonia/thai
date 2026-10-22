@@ -57,9 +57,15 @@ export default async function SettingsPage() {
 
       <section className="mt-6">
         <h2 className="text-xs uppercase tracking-widest text-muted">Add material</h2>
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <Link href="/capture" className="rounded-xl border border-edge py-3 text-center text-sm">
             Photograph
+          </Link>
+          <Link
+            href="/words/import"
+            className="rounded-xl border border-edge py-3 text-center text-sm"
+          >
+            Paste
           </Link>
           <Link href="/generate" className="rounded-xl border border-edge py-3 text-center text-sm">
             Generate

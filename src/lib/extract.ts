@@ -52,7 +52,11 @@ export const DESCRIBE_VERSION = 2
 type Job = 'read' | 'describe' | 'phrases' | 'verify'
 
 const MODELS: Record<Job, { model: string; effort: 'low' | 'medium' | 'high' }> = {
-  read: { model: 'claude-opus-5', effort: 'high' },
+  // Reading stays on Opus: a misread vowel becomes a card rehearsed daily.
+  // Effort comes down from high, though — transcribing what is printed on a
+  // page is recognition, not deliberation, and the thinking was costing real
+  // minutes across a long import for no gain in what it read.
+  read: { model: 'claude-opus-5', effort: 'medium' },
   describe: { model: 'claude-sonnet-5', effort: 'medium' },
   phrases: { model: 'claude-sonnet-5', effort: 'medium' },
   verify: { model: 'claude-sonnet-5', effort: 'medium' },

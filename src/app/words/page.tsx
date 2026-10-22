@@ -59,6 +59,12 @@ export default async function WordsPage() {
           Photograph
         </Link>
         <Link
+          href="/words/import"
+          className="flex-1 rounded-xl border border-edge py-3 text-center text-sm"
+        >
+          Paste
+        </Link>
+        <Link
           href="/generate"
           className="flex-1 rounded-xl border border-edge py-3 text-center text-sm"
         >

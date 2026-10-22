@@ -13,7 +13,7 @@ const UPLOAD_RETRIES = 3
 
 /** Pages uploaded at once. Small enough that each body stays well under any
  *  request limit, large enough that twenty pages don't crawl. */
-const UPLOAD_CONCURRENCY = 2
+const UPLOAD_CONCURRENCY = 3
 
 async function downscale(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file)
@@ -166,7 +166,7 @@ export default function CaptureClient({ packs }: { packs: string[] }) {
           {busy ? `Uploading ${progress.done}/${progress.total}…` : 'Choose or photograph pages'}
         </span>
         <span className="mt-1 text-xs text-muted">
-          up to {MAX_PAGES} pages · about 20s each
+          up to {MAX_PAGES} pages · read four at a time
         </span>
       </label>
 
