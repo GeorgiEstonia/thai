@@ -60,6 +60,10 @@ const ADDITIVE_COLUMNS = [
      "cache_write_tokens" integer default 0 not null,
      "cost_micros" integer default 0 not null
    )`,
+  `create table if not exists "job_leases" (
+     "id" text primary key,
+     "held_at" timestamp with time zone default now() not null
+   )`,
   `alter table "words" add column if not exists "example_thai" text`,
   `alter table "words" add column if not exists "example_ipa" text`,
   `alter table "words" add column if not exists "example_english" text`,

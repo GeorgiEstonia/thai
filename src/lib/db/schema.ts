@@ -265,3 +265,21 @@ export const seedImports = pgTable('seed_imports', {
     .notNull()
     .defaultNow(),
 })
+
+/**
+ * A heartbeat held by whichever request is currently running a long job.
+ *
+ * Background work used to stop when you closed the tab, which made it its own
+ * lock: no tab, no work. Now that a job carries on server-side after the
+ * response, opening the app again while one is still going would start a
+ * second worker over the same backlog and pay the model twice for it.
+ *
+ * Separate from seed_imports, which is an append-only record of what has run.
+ * This row is rewritten constantly and means only "someone was working on this
+ * a moment ago" — a claim that expires on its own, so a worker killed
+ * mid-batch frees the job instead of wedging it shut.
+ */
+export const jobLeases = pgTable('job_leases', {
+  id: text('id').primaryKey(),
+  heldAt: timestamp('held_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+})
