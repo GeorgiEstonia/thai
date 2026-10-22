@@ -5,6 +5,7 @@ import { loadDueSnapshot } from '@/lib/practice'
 import { countDuplicateWords } from '@/lib/words'
 
 import DescribeRunner from '@/components/DescribeRunner'
+import SeedRunner from '@/components/SeedRunner'
 
 import TidyDuplicates from '@/app/words/TidyDuplicates'
 
@@ -42,6 +43,7 @@ export default async function PracticePage() {
       <div className="px-5 pt-6 max-w-md w-full mx-auto">
         <PractiseCta href={reviewHref} due={due} label="Practise" />
         <TidyDuplicates duplicates={duplicates} />
+        <SeedRunner />
         <DescribeRunner />
       </div>
       <SelectionClient dueByKey={dueByKey} seenKeys={seenKeys} />

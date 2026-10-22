@@ -246,3 +246,22 @@ export const apiUsage = pgTable('api_usage', {
   /** Millionths of a US dollar, at the prices in lib/usage.ts. */
   costMicros: integer('cost_micros').notNull().default(0),
 })
+
+/**
+ * Which shipped vocabulary sets have been filed.
+ *
+ * A transcription done outside the app has to arrive as code and apply itself
+ * on the next visit, because there is no way in from outside — the app is
+ * behind a passphrase. This records what has been dealt with so it happens
+ * once, however many times a page renders.
+ */
+export const seedImports = pgTable('seed_imports', {
+  id: text('id').primaryKey(),
+  /** How many the set contained. */
+  items: integer('items').notNull().default(0),
+  /** How many were actually new; the rest the deck already had. */
+  added: integer('added').notNull().default(0),
+  appliedAt: timestamp('applied_at', { withTimezone: true, mode: 'date' })
+    .notNull()
+    .defaultNow(),
+})
