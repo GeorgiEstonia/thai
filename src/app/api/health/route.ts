@@ -118,6 +118,49 @@ async function deckStats() {
   }
 }
 
+/**
+ * Which packs exist and when each was last added to.
+ *
+ * Names and dates only — the pack label is something you chose ("Chapter 3"),
+ * not vocabulary. This endpoint is unauthenticated on purpose and has no
+ * business handing out the contents of a deck.
+ */
+async function packSummary() {
+  const rows = await getDb()
+    .select({
+      pack: schema.words.pack,
+      createdAt: schema.words.createdAt,
+      kind: schema.words.kind,
+    })
+    .from(schema.words)
+
+  const packs = new Map<string, { words: number; phrases: number; last: Date; first: Date }>()
+  for (const row of rows) {
+    const key = row.pack ?? '(ungrouped)'
+    const entry = packs.get(key) ?? {
+      words: 0,
+      phrases: 0,
+      last: row.createdAt,
+      first: row.createdAt,
+    }
+    if (row.kind === 'phrase') entry.phrases++
+    else entry.words++
+    if (row.createdAt > entry.last) entry.last = row.createdAt
+    if (row.createdAt < entry.first) entry.first = row.createdAt
+    packs.set(key, entry)
+  }
+
+  return [...packs.entries()]
+    .map(([pack, value]) => ({
+      pack,
+      words: value.words,
+      phrases: value.phrases,
+      firstAdded: value.first.toISOString().slice(0, 10),
+      lastAdded: value.last.toISOString().slice(0, 10),
+    }))
+    .sort((a, b) => b.lastAdded.localeCompare(a.lastAdded))
+}
+
 export async function GET(request: Request) {
   const env = {
     DATABASE_URL: Boolean(process.env.DATABASE_URL),
@@ -151,6 +194,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams
   const write = params.get('probe') === 'write' ? await probeWrite() : undefined
   const deck = database.ok && params.get('deck') === '1' ? await deckStats() : undefined
+  const packs = database.ok && params.get('packs') === '1' ? await packSummary() : undefined
 
   return NextResponse.json(
     {
@@ -158,6 +202,7 @@ export async function GET(request: Request) {
       database,
       write,
       deck,
+      packs,
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
     },
     { status: database.ok && Object.values(env).every(Boolean) ? 200 : 503 },
