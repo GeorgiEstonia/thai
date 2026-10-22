@@ -204,6 +204,12 @@ export async function GET(request: Request) {
       deck,
       packs,
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
+      // The commit above is baked in when the bundle is built, so a cached
+      // build can report an old one while running current code — which is
+      // exactly how a deploy came to look stuck when it was not. The
+      // deployment id is read at request time and changes every release, so
+      // it is the honest answer to "is this the version I just pushed".
+      deployment: process.env.VERCEL_DEPLOYMENT_ID ?? 'local',
     },
     { status: database.ok && Object.values(env).every(Boolean) ? 200 : 503 },
   )
