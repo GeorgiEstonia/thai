@@ -32,4 +32,23 @@ describe('describeKey', () => {
   it('trims stray whitespace so a padded echo still matches', () => {
     expect(describeKey('  ไป  ')).toBe('ไป')
   })
+
+  /**
+   * The prompt now asks for readings in slashes rather than brackets, because
+   * a bracket after a Thai word reads as its meaning. The echo followed the
+   * new rule straight away — a live batch came back with "หมา /mǎː/" — so the
+   * same bug returns in the new notation unless it is stripped too.
+   */
+  it('matches an echo whose reading came back in slashes', () => {
+    expect(describeKey('หมา /mǎː/')).toBe('หมา')
+    expect(describeKey('หมา /mǎː/')).toBe(describeKey('หมา'))
+  })
+
+  it('strips a slashed reading from a phrase too', () => {
+    expect(describeKey('ตอนบ่าย /tɔːn.bàːj/')).toBe('ตอนบ่าย')
+  })
+
+  it('leaves a slash inside the headword alone', () => {
+    expect(describeKey('ก/ข')).toBe('ก/ข')
+  })
 })

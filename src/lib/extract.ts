@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 import type { ExtractedWord } from './db/schema'
+import { describeKey } from './describe-match'
 import { bareThaiRuns, isFullyRomanised } from './romanised'
 import { recordUsage, tokensFrom } from './usage'
 
@@ -325,15 +326,20 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
   const bad = first.filter(unreadable)
   if (bad.length === 0) return first
 
-  const byThai = new Map(first.map((entry) => [entry.thai.trim(), entry]))
+  // Keyed through describeKey, because the model echoes the identifier back
+  // under the same rule it applies to everything else — asked to romanise, it
+  // returns "หมา /mǎː/" where "หมา" was sent. Keyed on the raw string the
+  // retry's answer lands beside the entry it was meant to replace instead of
+  // overwriting it, and the batch returns both.
+  const byThai = new Map(first.map((entry) => [describeKey(entry.thai), entry]))
   const retry = items.filter((item) =>
-    bad.some((entry) => entry.thai.trim() === item.thai.trim()),
+    bad.some((entry) => describeKey(entry.thai) === describeKey(item.thai)),
   )
 
   try {
     const second = await describeOnce(retry, bad)
     for (const entry of second) {
-      if (!unreadable(entry)) byThai.set(entry.thai.trim(), entry)
+      if (!unreadable(entry)) byThai.set(describeKey(entry.thai), entry)
     }
   } catch {
     // Fall through: the note is dropped below rather than shipped unreadable.
