@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 import type { ExtractedWord } from './db/schema'
+import { bareThaiRuns, isFullyRomanised } from './romanised'
 import { recordUsage, tokensFrom } from './usage'
 
 /**
@@ -43,11 +44,13 @@ export const DESCRIBE_BATCH = 25
  *
  * 1 — the original: an example sentence and a usage note.
  * 2 — the classifier became a required field for nouns, and every Thai word
- *     written anywhere must carry its romanisation. Output from before that
- *     is missing something the reader needs, so it is rewritten rather than
- *     left alone.
+ *     written anywhere must carry its romanisation.
+ * 3 — that romanisation is now written in slashes and checked. Version 2
+ *     asked for it "in brackets", and got the English meaning there instead:
+ *     notes reading "after เที่ยง (noon)", which obey the instruction and
+ *     leave the word just as unsayable. Those are rewritten.
  */
-export const DESCRIBE_VERSION = 2
+export const DESCRIBE_VERSION = 3
 
 type Job = 'read' | 'describe' | 'phrases' | 'verify'
 
@@ -187,12 +190,15 @@ Rules:
 - Keep the context note to one or two sentences. It is read on the back of a
   flashcard, not in a dictionary.
 - Write the note in English.
-- EVERY piece of Thai script you write anywhere, in any field, must be followed
-  immediately by its romanisation in brackets: สุนัข (sù.nák), ครับ (kʰráp).
-  This is not optional and it is not decoration. The reader cannot yet read
-  Thai script, so a note mentioning a word in script alone tells them nothing
-  at all — it is the same as leaving the sentence unfinished. This applies to
-  every mention, including the second and third time a word appears.
+- EVERY piece of Thai script you write anywhere must be followed immediately
+  by its reading BETWEEN SLASHES: สุนัข /sù.nák/, ครับ /kʰráp/, เที่ยง /thîaŋ/.
+  Slashes, not brackets. A bracket after a Thai word is read as its meaning —
+  "เที่ยง (noon)" — and a meaning leaves the word just as unsayable as before.
+  Put the reading in slashes first; add a meaning in brackets after it if it
+  helps: เที่ยง /thîaŋ/ (noon).
+  This is not decoration. The reader cannot yet read Thai script, so a word
+  written in script alone tells them nothing at all. It applies to every
+  mention, including the second and third time a word appears in the note.
   (The exampleThai field is the one exception: it has its own IPA field.)
 - Return null for context only when there is genuinely nothing worth saying.`
 
@@ -245,16 +251,10 @@ export interface Described {
   context: string | null
 }
 
-/**
- * Writes an example sentence and a usage note for each item.
- *
- * A gloss tells you what a word means. It does not tell you how to say
- * anything with it — and the gap is widest exactly where Thai is hardest for
- * an English speaker: classifiers, particles, politeness. "Classifier for flat
- * things" is a label; the sentence that counts three plates of food is the
- * thing you can actually use.
- */
-export async function describeWords(items: DescribeInput[]): Promise<Described[]> {
+async function describeOnce(
+  items: DescribeInput[],
+  correcting: Described[] = [],
+): Promise<Described[]> {
   if (items.length === 0) return []
 
   const client = new Anthropic()
@@ -266,7 +266,26 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
       effort: MODELS.describe.effort,
       format: { type: 'json_schema', schema: DESCRIBE_SCHEMA },
     },
-    messages: [{ role: 'user', content: JSON.stringify({ items }) }],
+    messages: [
+      {
+        role: 'user',
+        content: JSON.stringify(
+          correcting.length > 0
+            ? {
+                items,
+                // Quoted back so the second attempt is about these words
+                // specifically, not a vaguer request to try harder.
+                fixThese: correcting.flatMap((entry) => [
+                  ...bareThaiRuns(entry.context),
+                  ...bareThaiRuns(entry.classifier),
+                ]),
+                reminder:
+                  'Those Thai words were written without a reading. Every Thai word needs its reading in slashes straight after it, like เที่ยง /thîaŋ/.',
+              }
+            : { items },
+        ),
+      },
+    ],
   })
 
   const response = await stream.finalMessage()
@@ -277,9 +296,58 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
   if (!text || text.type !== 'text') return []
 
   const parsed = JSON.parse(text.text) as { described: Described[] }
-
-  // Drop anything the model left empty rather than filing a blank example.
   return parsed.described.filter((entry) => entry.exampleThai.trim() !== '')
+}
+
+/** Fields a reader has to read, where bare Thai script is a defect. */
+function unreadable(entry: Described): boolean {
+  return !isFullyRomanised(entry.context) || !isFullyRomanised(entry.classifier)
+}
+
+/**
+ * Writes an example sentence and a usage note for each item.
+ *
+ * A gloss tells you what a word means. It does not tell you how to say
+ * anything with it — and the gap is widest exactly where Thai is hardest for
+ * an English speaker: classifiers, particles, politeness.
+ *
+ * The output is checked, not trusted. Asked for a reading "in brackets" the
+ * model obligingly wrote the English there instead — "after เที่ยง (noon)" —
+ * which obeys the instruction and defeats its purpose. Anything still carrying
+ * bare Thai is asked for again, once, with the specific words quoted back; if
+ * it comes back bare a second time the note is dropped rather than shipped,
+ * because a note that cannot be read is worse than no note at all.
+ */
+export async function describeWords(items: DescribeInput[]): Promise<Described[]> {
+  if (items.length === 0) return []
+
+  const first = await describeOnce(items)
+  const bad = first.filter(unreadable)
+  if (bad.length === 0) return first
+
+  const byThai = new Map(first.map((entry) => [entry.thai.trim(), entry]))
+  const retry = items.filter((item) =>
+    bad.some((entry) => entry.thai.trim() === item.thai.trim()),
+  )
+
+  try {
+    const second = await describeOnce(retry, bad)
+    for (const entry of second) {
+      if (!unreadable(entry)) byThai.set(entry.thai.trim(), entry)
+    }
+  } catch {
+    // Fall through: the note is dropped below rather than shipped unreadable.
+  }
+
+  return [...byThai.values()].map((entry) =>
+    unreadable(entry)
+      ? {
+          ...entry,
+          context: isFullyRomanised(entry.context) ? entry.context : null,
+          classifier: isFullyRomanised(entry.classifier) ? entry.classifier : null,
+        }
+      : entry,
+  )
 }
 
 const TOPIC_SYSTEM = `You name the topic of a page of Thai lesson vocabulary.
