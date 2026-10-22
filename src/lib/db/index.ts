@@ -58,6 +58,8 @@ const ADDITIVE_COLUMNS = [
   `alter table "words" add column if not exists "example_ipa" text`,
   `alter table "words" add column if not exists "example_english" text`,
   `alter table "words" add column if not exists "context" text`,
+  `alter table "words" add column if not exists "classifier" text`,
+  `alter table "words" add column if not exists "describe_version" integer default 0 not null`,
   `alter table "words" add column if not exists "priority" integer default 0 not null`,
 ]
 

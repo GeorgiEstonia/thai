@@ -318,7 +318,14 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     // Same priority the server will apply, so the interval shown in the
     // summary is the interval that was actually stored.
     const priority = card.item.type === 'word' ? toPriority(card.item.word.priority) : 0
-    const result = gradeCurrent(session, g, state, answeredAt, priority)
+
+    // The same item the other way round, if this session has it. Missing one
+    // direction is the best moment to be shown the other.
+    const other: Direction = card.direction === 'recognise' ? 'produce' : 'recognise'
+    const siblingKey = cardKey(card.item.type, card.item.id, other)
+    const sibling = byKey.has(siblingKey) ? siblingKey : null
+
+    const result = gradeCurrent(session, g, state, answeredAt, { priority, sibling })
 
     if (result.scheduling) {
       setStates((prev) => new Map(prev).set(entry.id, result.scheduling!.after))
@@ -533,6 +540,15 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                 >
                   <span aria-hidden>🔊</span> hear the sentence
                 </button>
+              </div>
+            ) : null}
+
+            {/* A noun cannot be counted or pointed at without its classifier,
+                so it gets its own line rather than being buried in the note. */}
+            {item.type === 'word' && item.word.classifier ? (
+              <div className="flex items-baseline justify-between gap-3 rounded-xl border border-edge px-3 py-3 text-left">
+                <p className="text-[10px] uppercase tracking-widest text-muted">Classifier</p>
+                <p className="thai text-lg">{item.word.classifier}</p>
               </div>
             ) : null}
 

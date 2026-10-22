@@ -2,6 +2,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { type ItemType, type WordRecord, wordItem } from '@/content/items'
 
+import { DESCRIBE_VERSION } from './extract'
+
 import { ensureSchema, getDb, schema } from './db'
 
 /** Vocabulary: the part of the deck that is yours rather than authored. */
@@ -23,6 +25,8 @@ export async function listWords(): Promise<WordRecord[]> {
     exampleThai: row.exampleThai,
     exampleIpa: row.exampleIpa,
     exampleEnglish: row.exampleEnglish,
+    classifier: row.classifier,
+    describeVersion: row.describeVersion,
     context: row.context,
     priority: row.priority,
   }))
@@ -39,6 +43,7 @@ export interface WordDescription {
   exampleThai: string
   exampleIpa: string
   exampleEnglish: string
+  classifier?: string | null
   context: string | null
 }
 
@@ -51,15 +56,22 @@ export async function describeWord(id: string, described: WordDescription): Prom
       exampleThai: described.exampleThai.trim() || null,
       exampleIpa: described.exampleIpa.trim() || null,
       exampleEnglish: described.exampleEnglish.trim() || null,
+      classifier: described.classifier?.trim() || null,
       context: described.context?.trim() || null,
+      describeVersion: DESCRIBE_VERSION,
     })
     .where(eq(schema.words.id, id))
 }
 
-/** Vocabulary with no example yet — what the backfill still has to do. */
+/**
+ * Vocabulary the backfill still has to write — never described, or described
+ * by a prompt generation whose output is now missing something.
+ */
 export async function wordsNeedingDescription(limit: number): Promise<WordRecord[]> {
   const all = await listWords()
-  return all.filter((word) => !word.exampleThai).slice(0, limit)
+  return all
+    .filter((word) => !word.exampleThai || (word.describeVersion ?? 0) < DESCRIBE_VERSION)
+    .slice(0, limit)
 }
 
 export async function listWordItems() {

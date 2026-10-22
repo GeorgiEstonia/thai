@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { isAuthenticated } from '@/lib/auth'
+import { describeKey } from '@/lib/describe-match'
 import { DESCRIBE_BATCH, describeWords } from '@/lib/extract'
 import { describeWord, wordsNeedingDescription } from '@/lib/words'
 
@@ -36,15 +37,21 @@ export async function POST() {
     )
 
     // Matched on the written form: it is what was sent and what comes back.
-    const byThai = new Map(results.map((entry) => [entry.thai.trim(), entry]))
+    //
+    // Tolerant of a romanisation being appended to the echoed field. The
+    // prompt now tells every Thai word to carry its reading, and the model
+    // obligingly applied that to the echo as well — returning "หมา (mǎː)"
+    // where "หมา" was sent. That silently matched nothing and saved nothing.
+    const byThai = new Map(results.map((entry) => [describeKey(entry.thai), entry]))
 
     for (const word of pending) {
-      const found = byThai.get(word.thai.trim())
+      const found = byThai.get(describeKey(word.thai))
       if (!found) continue
       await describeWord(word.id, {
         exampleThai: found.exampleThai,
         exampleIpa: found.exampleIpa,
         exampleEnglish: found.exampleEnglish,
+        classifier: found.classifier,
         context: found.context,
       })
       described++

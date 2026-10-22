@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { CHARACTERS } from '@/content/characters'
 import { VOWELS } from '@/content/vowels'
-import { PRACTICE_ITEMS, wordItem } from '@/content/items'
+import { PRACTICE_ITEMS, produceHint, wordItem } from '@/content/items'
 
 import { soundRevealsAnswer, speechTextFor } from './speech'
 
@@ -85,6 +85,34 @@ describe('soundRevealsAnswer', () => {
     // Nothing is spoken on that front anyway; once flipped, the sound helps.
     for (const item of [character, vowel, word]) {
       expect(soundRevealsAnswer(item, 'produce')).toBe(false)
+    }
+  })
+})
+
+/**
+ * Thai script never appears alone anywhere in the app: the script is the thing
+ * being learned, so a line written only in it conveys nothing to the reader
+ * yet. These pin the places that had slipped.
+ */
+describe('romanisation always accompanies Thai script', () => {
+  const thaiScript = /[฀-๿]/
+
+  it('gives a consonant hint its spoken name, not just the script', () => {
+    for (const item of PRACTICE_ITEMS.filter((entry) => entry.type === 'character')) {
+      const hint = produceHint(item)
+      if (hint && thaiScript.test(hint)) {
+        // Something outside the Thai must be there to read it by.
+        expect(hint.replace(/[฀-๿\s—()-]/g, '').length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('gives a vowel hint its example in IPA as well as in script', () => {
+    for (const item of PRACTICE_ITEMS.filter((entry) => entry.type === 'vowel')) {
+      const hint = produceHint(item)
+      if (!hint || !thaiScript.test(hint)) continue
+      const vowel = item.type === 'vowel' ? item.vowel : null
+      expect(hint).toContain(vowel!.exampleIpa)
     }
   })
 })

@@ -11,14 +11,21 @@ interface Pack {
   id: string
   kind: Kind
   label: string
-  preview: string[]
+  preview: { thai: string; ipa: string }[]
   waiting: number
+}
+
+interface BlockingWord {
+  thai: string
+  ipa: string
+  english: string
 }
 
 interface LockedPreview {
   thai: string
+  ipa: string
   english: string
-  blockedBy: string[]
+  blockedBy: BlockingWord[]
 }
 
 const KIND_LABELS: Record<Kind, string> = { word: 'Words', phrase: 'Phrases' }
@@ -95,9 +102,27 @@ export default function WordSelection({
               <ul className="mt-2 space-y-2">
                 {nextUp.map((row) => (
                   <li key={row.thai} className="text-xs">
-                    <span className="thai text-base text-muted">{row.thai}</span>
-                    <span className="ml-2 text-muted">needs</span>{' '}
-                    <span className="thai text-base">{row.blockedBy.join(' ')}</span>
+                    <span className="thai text-base">{row.thai}</span>
+                    {row.ipa ? (
+                      <span className="ml-2 font-mono text-[11px] text-muted">/{row.ipa}/</span>
+                    ) : null}
+                    <span className="block text-muted">{row.english}</span>
+                    <span className="mt-1 block text-muted">needs:</span>
+                    <ul className="ml-3">
+                      {row.blockedBy.map((word) => (
+                        <li key={word.thai}>
+                          <span className="thai text-base">{word.thai}</span>
+                          {word.ipa ? (
+                            <span className="ml-2 font-mono text-[11px] text-muted">
+                              /{word.ipa}/
+                            </span>
+                          ) : null}
+                          {word.english ? (
+                            <span className="ml-2 text-muted">{word.english}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>
@@ -179,7 +204,12 @@ export default function WordSelection({
                       <span className="text-[11px] text-muted">✓</span>
                     )}
                   </div>
-                  <p className="thai mt-1 truncate text-lg">{pack.preview.join(' ')}</p>
+                  <p className="thai mt-1 truncate text-lg">
+                    {pack.preview.map((word) => word.thai).join(' ')}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-[10px] text-muted">
+                    {pack.preview.map((word) => word.ipa).filter(Boolean).join(' · ')}
+                  </p>
                 </button>
               )
             })}

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  LAPSE_GAPS,
+  LAPSE_RECALLS_REQUIRED,
   LEECH_LAPSE_THRESHOLD,
   MASTERY_INTERVAL_DAYS,
   MAX_INTERVAL_DAYS,
-  MAX_REINFORCEMENTS_PER_ITEM,
+  MAX_LAPSE_SHOWINGS,
   type SessionState,
   type SrsState,
   addDays,
@@ -224,9 +226,11 @@ describe('session queue', () => {
   })
 
   it('stops re-queueing a card that keeps being missed', () => {
+    // It must keep coming back — but a word you cannot get right today should
+    // not be able to hold the session open indefinitely.
     let session = buildSession([{ id: 'hard', state: overdue }], NOW, { rng: keepOrder })
 
-    for (let i = 0; i < MAX_REINFORCEMENTS_PER_ITEM; i++) {
+    for (let i = 0; i < MAX_LAPSE_SHOWINGS; i++) {
       session = gradeCurrent(session, 'missed', overdue, NOW).session
       expect(session.queue).toHaveLength(1)
     }
@@ -256,6 +260,7 @@ describe('dropFromSession', () => {
       { id: 'word:a:recognise', kind: 'new', reinforcement: true },
     ],
     reinforcementCounts: { 'word:a:recognise': 1 },
+    lapses: {},
     completed: ['word:a:recognise'],
   }
 
@@ -289,6 +294,7 @@ describe('dropFromSession with several ids', () => {
         { id: 'word:b:recognise', kind: 'review', reinforcement: false },
       ],
       reinforcementCounts: {},
+      lapses: {},
       completed: [],
     }
 
@@ -337,5 +343,187 @@ describe('priority', () => {
     expect(toPriority(undefined)).toBe(0)
     expect(toPriority(5)).toBe(1)
     expect(toPriority(-3)).toBe(-1)
+  })
+})
+
+/**
+ * The complaint these fix: a missed card came back once, at the very end of
+ * the queue, and left the sitting the moment it was answered right — which
+ * after being shown the answer proves nothing. By the next session the
+ * mistake had set.
+ */
+const due = state({ intervalDays: 2, reps: 2, dueAt: addDays(NOW, -1) })
+
+/** Answers correctly until `id` is at the front. Bounded: a test that hangs
+ *  when behaviour changes is worse than one that fails. */
+function advanceTo(session: SessionState, id: string): SessionState {
+  let current = session
+  for (let step = 0; step < 200; step++) {
+    if (current.queue[0]?.id === id) return current
+    if (current.queue.length === 0) break
+    current = gradeCurrent(current, 'got', due, NOW).session
+  }
+  throw new Error(`${id} never came back to the front of the queue`)
+}
+
+describe('recovering from a miss inside one sitting', () => {
+  function deck(ids: string[]) {
+    return buildSession(
+      ids.map((id) => ({ id, state: due })),
+      NOW,
+      { rng: keepOrder },
+    )
+  }
+
+  it('brings a missed card back a few cards later, not immediately', () => {
+    const session = deck(['a', 'b', 'c', 'd', 'e', 'f'])
+    const after = gradeCurrent(session, 'missed', due, NOW).session
+
+    // Not the very next card — that tests the last ten seconds, not memory.
+    expect(after.queue[0].id).not.toBe('a')
+    expect(after.queue[LAPSE_GAPS[0]].id).toBe('a')
+  })
+
+  it('does not put it at the end of the queue, where it used to go', () => {
+    const session = deck(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
+    const after = gradeCurrent(session, 'missed', due, NOW).session
+
+    expect(after.queue[after.queue.length - 1].id).not.toBe('a')
+  })
+
+  it('keeps showing it while it is still being missed', () => {
+    let session = deck(['a', 'b', 'c', 'd', 'e'])
+
+    for (let i = 0; i < 3; i++) {
+      session = gradeCurrent(session, 'missed', due, NOW).session
+      // Still queued, every time.
+      expect(session.queue.some((entry) => entry.id === 'a')).toBe(true)
+      // Walk the queue forward to the next showing of it.
+      session = advanceTo(session, 'a')
+    }
+  })
+
+  it('does not let one correct answer end it', () => {
+    let session = deck(['a', 'b', 'c', 'd', 'e', 'f'])
+    session = gradeCurrent(session, 'missed', due, NOW).session
+
+    session = advanceTo(session, 'a')
+    session = gradeCurrent(session, 'got', due, NOW).session
+
+    // One clean recall is not enough: it is still owed another, further out.
+    expect(session.queue.some((entry) => entry.id === 'a')).toBe(true)
+    expect(session.completed).not.toContain('a')
+  })
+
+  it('lets it go after two clean recalls at widening gaps', () => {
+    let session = deck(['a', 'b', 'c', 'd', 'e', 'f'])
+    session = gradeCurrent(session, 'missed', due, NOW).session
+
+    for (let recalls = 0; recalls < LAPSE_RECALLS_REQUIRED; recalls++) {
+      session = advanceTo(session, 'a')
+      session = gradeCurrent(session, 'got', due, NOW).session
+    }
+
+    expect(session.lapses['a']).toBeUndefined()
+    expect(session.completed).toContain('a')
+  })
+
+  it('widens the gap after each clean recall', () => {
+    let session = deck(Array.from({ length: 30 }, (_, i) => `w${i}`))
+    session = gradeCurrent(session, 'missed', due, NOW).session
+    const first = session.queue.findIndex((entry) => entry.id === 'w0')
+
+    session = advanceTo(session, 'w0')
+    session = gradeCurrent(session, 'got', due, NOW).session
+    const second = session.queue.findIndex((entry) => entry.id === 'w0')
+
+    expect(second).toBeGreaterThan(first)
+  })
+
+  it('a miss after a recovery starts the recovery over', () => {
+    let session = deck(['a', 'b', 'c', 'd', 'e', 'f'])
+    session = gradeCurrent(session, 'missed', due, NOW).session
+
+    session = advanceTo(session, 'a')
+    session = gradeCurrent(session, 'got', due, NOW).session
+    session = advanceTo(session, 'a')
+    session = gradeCurrent(session, 'missed', due, NOW).session
+
+    expect(session.lapses['a'].streak).toBe(0)
+    expect(session.lapses['a'].misses).toBe(2)
+  })
+
+  it('still reschedules the card properly on the miss itself', () => {
+    const session = deck(['a', 'b', 'c'])
+    const result = gradeCurrent(session, 'missed', { ...due, intervalDays: 8 }, NOW)
+
+    expect(result.scheduling?.after.intervalDays).toBe(0)
+    expect(result.scheduling?.after.lapses).toBe(1)
+  })
+
+  it('does not reschedule the in-sitting repeats', () => {
+    let session = deck(['a', 'b', 'c', 'd', 'e'])
+    session = gradeCurrent(session, 'missed', due, NOW).session
+
+    session = advanceTo(session, 'a')
+
+    // The repeat is a reinforcement showing: logged, but it must not move the
+    // due date on the strength of a recall from ninety seconds ago.
+    expect(gradeCurrent(session, 'got', due, NOW).scheduling).toBeNull()
+  })
+})
+
+describe('the other direction follows a miss', () => {
+  it('pulls the sibling card in close behind', () => {
+    const session = buildSession(
+      ['word:x:recognise', 'b', 'c', 'd', 'e', 'f', 'g', 'word:x:produce'].map((id) => ({
+        id,
+        state: due,
+      })),
+      NOW,
+      { rng: keepOrder },
+    )
+
+    const after = gradeCurrent(session, 'missed', due, NOW, {
+      sibling: 'word:x:produce',
+    }).session
+
+    const siblingAt = after.queue.findIndex((entry) => entry.id === 'word:x:produce')
+    expect(siblingAt).toBeLessThanOrEqual(LAPSE_GAPS[0] + 2)
+  })
+
+  it('moves the sibling rather than duplicating it', () => {
+    const session = buildSession(
+      ['word:x:recognise', 'b', 'c', 'd', 'word:x:produce'].map((id) => ({
+        id,
+        state: due,
+      })),
+      NOW,
+      { rng: keepOrder },
+    )
+
+    const after = gradeCurrent(session, 'missed', due, NOW, {
+      sibling: 'word:x:produce',
+    }).session
+
+    expect(after.queue.filter((entry) => entry.id === 'word:x:produce')).toHaveLength(1)
+  })
+
+  it('leaves the queue alone when there is no sibling to pull in', () => {
+    const session = buildSession(
+      ['a', 'b', 'c'].map((id) => ({ id, state: due })),
+      NOW,
+      { rng: keepOrder },
+    )
+
+    const after = gradeCurrent(session, 'missed', due, NOW, { sibling: null }).session
+    expect(after.queue.map((entry) => entry.id)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('never pulls in the card being graded as its own sibling', () => {
+    const session = buildSession([{ id: 'a', state: due }], NOW, { rng: keepOrder })
+    const after = gradeCurrent(session, 'missed', due, NOW, { sibling: 'a' }).session
+
+    expect(after.queue).toHaveLength(1)
   })
 })

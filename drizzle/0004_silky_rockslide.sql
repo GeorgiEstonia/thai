@@ -1,0 +1,1 @@
+ALTER TABLE "words" ADD COLUMN "describe_version" integer DEFAULT 0 NOT NULL;

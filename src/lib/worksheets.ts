@@ -4,6 +4,7 @@ import { getDb, schema } from './db'
 import type { ExtractedWord } from './db/schema'
 import {
   DESCRIBE_BATCH,
+  classifyTopic,
   composePhrases,
   dedupe,
   describeWords,
@@ -12,6 +13,7 @@ import {
   sortForReview,
   verifyItems,
 } from './extract'
+import { describeKey } from './describe-match'
 import { addWords, describeWord, wordsNeedingDescription } from './words'
 
 /**
@@ -178,6 +180,25 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
     const checked = await verifyItems(sortForReview([...words, ...phrases]))
     const safe = checked.filter(isSafeToAdd)
 
+    // File it under a topic. If you typed one in, that wins — you know what
+    // the lesson was. Otherwise the words have just been read, so ask what
+    // they were about rather than dropping another batch into the ungrouped
+    // pile, which is where almost everything had been going.
+    let pack = sheet.pack
+    if (!pack && safe.length > 0) {
+      try {
+        pack = await classifyTopic(safe)
+        if (pack) {
+          await db
+            .update(schema.worksheets)
+            .set({ pack })
+            .where(eq(schema.worksheets.id, worksheetId))
+        }
+      } catch {
+        // Not worth failing an import over. Ungrouped is recoverable.
+      }
+    }
+
     if (safe.length > 0) {
       await addWords(
         safe.map((item) => ({
@@ -186,7 +207,7 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
           english: item.english,
           kind: item.kind,
           notes: item.notes,
-          pack: sheet.pack,
+          pack,
           source: 'worksheet' as const,
           worksheetId,
         })),
@@ -210,9 +231,11 @@ export async function runStep(worksheetId: string): Promise<StepResult> {
             notes: word.notes,
           })),
         )
-        const byThai = new Map(described.map((entry) => [entry.thai.trim(), entry]))
+        // Same tolerance as the backfill route: the echoed field may come
+        // back with a romanisation appended.
+        const byThai = new Map(described.map((entry) => [describeKey(entry.thai), entry]))
         for (const word of fresh) {
-          const found = byThai.get(word.thai.trim())
+          const found = byThai.get(describeKey(word.thai))
           if (found) await describeWord(word.id, found)
         }
       } catch {

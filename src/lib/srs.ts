@@ -26,8 +26,40 @@ export const MASTERY_INTERVAL_DAYS = 4
 /** Cards you keep forgetting get surfaced for attention, not auto-suspended. */
 export const LEECH_LAPSE_THRESHOLD = 4
 
-/** Stops a repeatedly-missed card from looping forever inside one session. */
+/** Stops a first-showing card from looping forever inside one session. */
 export const MAX_REINFORCEMENTS_PER_ITEM = 3
+
+/**
+ * How soon a missed card comes back, and how far apart after that.
+ *
+ * Three cards later, then eight, then twenty. Not immediately: answering a
+ * card you were just told the answer to tests the last ten seconds of memory,
+ * not retention, and it feels like progress while teaching nothing. Three
+ * cards is far enough that you have to actually retrieve it again and near
+ * enough that you have not yet lost it.
+ *
+ * The gaps widen because that is the whole mechanism — each clean recall at a
+ * longer gap is better evidence than the one before it.
+ */
+export const LAPSE_GAPS = [3, 8, 20]
+
+/**
+ * Clean recalls needed before a missed card is done for the sitting.
+ *
+ * Two, at widening gaps. One is the problem being fixed: getting it right
+ * once straight after being told the answer proves nothing, and the card was
+ * then put away until tomorrow — by which time the mistake has set.
+ */
+export const LAPSE_RECALLS_REQUIRED = 2
+
+/**
+ * A ceiling on how many times one card can come back in a sitting.
+ *
+ * A word you simply cannot get right today should not be able to take the
+ * session hostage. When this is hit the card is left alone: it was reset to
+ * due-immediately when missed, so it leads tomorrow's session anyway.
+ */
+export const MAX_LAPSE_SHOWINGS = 6
 
 const MS_PER_DAY = 86_400_000
 
@@ -166,9 +198,20 @@ export interface SessionEntry {
   reinforcement: boolean
 }
 
+/** What a card that was missed this sitting still owes before it is done. */
+export interface LapseState {
+  misses: number
+  /** Clean recalls since the last miss. */
+  streak: number
+  /** Times it has been put back in the queue, so it cannot loop forever. */
+  showings: number
+}
+
 export interface SessionState {
   queue: SessionEntry[]
   reinforcementCounts: Record<string, number>
+  /** Cards missed this sitting, keyed by card id, until they are recovered. */
+  lapses: Record<string, LapseState>
   /** Ids that have left the queue, in the order they were finished. */
   completed: string[]
 }
@@ -218,7 +261,7 @@ export function buildSession(
     ),
   ]
 
-  return { queue, reinforcementCounts: {}, completed: [] }
+  return { queue, reinforcementCounts: {}, lapses: {}, completed: [] }
 }
 
 export function currentEntry(session: SessionState): SessionEntry | null {
@@ -234,43 +277,106 @@ export interface GradeResult {
   scheduling: { id: string; before: SrsState; after: SrsState } | null
 }
 
+/** Puts an entry `gap` cards further on, or at the end if the queue is short. */
+function insertAt(queue: SessionEntry[], gap: number, entry: SessionEntry): SessionEntry[] {
+  const next = [...queue]
+  next.splice(Math.min(gap, next.length), 0, entry)
+  return next
+}
+
+export interface GradeOptions {
+  priority?: Priority
+  /**
+   * The same item practised the other way round, if this deck has it.
+   *
+   * Reading a word and producing it are scheduled apart because they are
+   * different skills — but when one of them breaks, the other is the most
+   * useful thing you can be shown next. Getting ข้าว → "rice" wrong and then
+   * being asked for "rice" → ข้าว a few cards later attacks the same gap from
+   * the other side while it is still open.
+   */
+  sibling?: string | null
+}
+
 /**
  * Grades the entry at the front of the queue.
  *
  * `state` is the item's current schedule, supplied by the caller — this module
  * deliberately owns no storage.
+ *
+ * A missed card does not leave the sitting when you next get it right. It
+ * comes back three cards later, then eight, then twenty, and only leaves after
+ * two clean recalls — because one correct answer straight after being shown
+ * the answer is not evidence of anything.
  */
 export function gradeCurrent(
   session: SessionState,
   grade: Grade,
   state: SrsState,
   now: Date,
-  priority: Priority = 0,
+  options: GradeOptions = {},
 ): GradeResult {
   const entry = currentEntry(session)
   if (!entry) return { session, scheduling: null }
 
-  const rest = session.queue.slice(1)
-  const seen = session.reinforcementCounts[entry.id] ?? 0
+  const { priority = 0, sibling = null } = options
 
-  // Come back later in this sitting if it was missed, or if this was the first
-  // time the item has ever been shown.
-  const wantsRepeat = grade === 'missed' || (!entry.reinforcement && entry.kind === 'new')
-  const canRepeat = seen < MAX_REINFORCEMENTS_PER_ITEM
-
-  const queue = [...rest]
+  let queue = session.queue.slice(1)
   const reinforcementCounts = { ...session.reinforcementCounts }
+  const lapses = { ...session.lapses }
   const completed = [...session.completed]
 
-  if (wantsRepeat && canRepeat) {
-    queue.push({ id: entry.id, kind: entry.kind, reinforcement: true })
-    reinforcementCounts[entry.id] = seen + 1
+  const lapse = lapses[entry.id]
+  const repeat: SessionEntry = { id: entry.id, kind: entry.kind, reinforcement: true }
+
+  if (grade === 'missed') {
+    const next: LapseState = {
+      misses: (lapse?.misses ?? 0) + 1,
+      streak: 0,
+      showings: (lapse?.showings ?? 0) + 1,
+    }
+
+    if (next.showings <= MAX_LAPSE_SHOWINGS) {
+      queue = insertAt(queue, LAPSE_GAPS[0], repeat)
+      lapses[entry.id] = next
+    } else {
+      // Enough for one sitting. It is due immediately either way.
+      delete lapses[entry.id]
+      completed.push(entry.id)
+    }
+
+    // Bring the other direction alongside it, wherever it currently sits.
+    if (sibling && sibling !== entry.id) {
+      const existing = queue.find((queued) => queued.id === sibling)
+      queue = queue.filter((queued) => queued.id !== sibling)
+      queue = insertAt(queue, LAPSE_GAPS[0] + 2, existing ?? { id: sibling, kind: 'review', reinforcement: true })
+    }
+  } else if (lapse) {
+    // Recovering from a miss: prove it at a longer gap before it is done.
+    const streak = lapse.streak + 1
+
+    if (streak >= LAPSE_RECALLS_REQUIRED || lapse.showings >= MAX_LAPSE_SHOWINGS) {
+      delete lapses[entry.id]
+      completed.push(entry.id)
+    } else {
+      queue = insertAt(queue, LAPSE_GAPS[Math.min(streak, LAPSE_GAPS.length - 1)], repeat)
+      lapses[entry.id] = { ...lapse, streak, showings: lapse.showings + 1 }
+    }
+  } else if (!entry.reinforcement && entry.kind === 'new') {
+    // A card's first ever showing gets one unscheduled repeat later on.
+    const seen = reinforcementCounts[entry.id] ?? 0
+    if (seen < MAX_REINFORCEMENTS_PER_ITEM) {
+      queue.push(repeat)
+      reinforcementCounts[entry.id] = seen + 1
+    } else {
+      completed.push(entry.id)
+    }
   } else {
     completed.push(entry.id)
   }
 
   return {
-    session: { queue, reinforcementCounts, completed },
+    session: { queue, reinforcementCounts, lapses, completed },
     scheduling: entry.reinforcement
       ? null
       : { id: entry.id, before: state, after: applyGrade(state, grade, now, priority) },
@@ -296,9 +402,14 @@ export function dropFromSession(session: SessionState, ...ids: string[]): Sessio
     Object.entries(session.reinforcementCounts).filter(([id]) => !dropped.has(id)),
   )
 
+  const lapses = Object.fromEntries(
+    Object.entries(session.lapses).filter(([id]) => !dropped.has(id)),
+  )
+
   return {
     queue: session.queue.filter((entry) => !dropped.has(entry.id)),
     reinforcementCounts,
+    lapses,
     completed: session.completed.filter((id) => !dropped.has(id)),
   }
 }

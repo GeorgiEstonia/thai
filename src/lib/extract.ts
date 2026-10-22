@@ -38,6 +38,17 @@ import { recordUsage, tokensFrom } from './usage'
  */
 export const DESCRIBE_BATCH = 25
 
+/**
+ * The generation of the describe prompt.
+ *
+ * 1 — the original: an example sentence and a usage note.
+ * 2 — the classifier became a required field for nouns, and every Thai word
+ *     written anywhere must carry its romanisation. Output from before that
+ *     is missing something the reader needs, so it is rewritten rather than
+ *     left alone.
+ */
+export const DESCRIBE_VERSION = 2
+
 type Job = 'read' | 'describe' | 'phrases' | 'verify'
 
 const MODELS: Record<Job, { model: string; effort: 'low' | 'medium' | 'high' }> = {
@@ -147,12 +158,19 @@ The example sentence:
   and ฉ/ช, ː for long vowels, and tone marks — matching the notation already
   used on the item where it has one.
 
+THE CLASSIFIER IS REQUIRED FOR EVERY NOUN. Thai cannot count or point at a
+noun without one, so a noun learned without its classifier is a noun that
+cannot be used in a real sentence. Return it in the "classifier" field as the
+Thai followed by its romanisation in brackets — for example "ตัว (tuːa)". Use
+null only when the item is genuinely not a noun, or is a noun that takes no
+classifier. When a noun has one, the example sentence should preferably show
+it being counted or pointed at, so the classifier is seen doing its job.
+
 The context note is what a learner would otherwise have to ask about. Include
 whatever is true and useful, and nothing that isn't:
 - what the item is FOR, when the gloss doesn't say (classifiers, particles)
 - register: polite, blunt, slang, written-only, who says it to whom
-- the male/female speaker difference where there is one (ครับ / ค่ะ)
-- a classifier a noun takes
+- the male/female speaker difference where there is one
 - a literal reading when it makes the word memorable
 - a near-synonym it is confused with, and the difference
 - false friends for an English speaker
@@ -165,6 +183,13 @@ Rules:
 - Keep the context note to one or two sentences. It is read on the back of a
   flashcard, not in a dictionary.
 - Write the note in English.
+- EVERY piece of Thai script you write anywhere, in any field, must be followed
+  immediately by its romanisation in brackets: สุนัข (sù.nák), ครับ (kʰráp).
+  This is not optional and it is not decoration. The reader cannot yet read
+  Thai script, so a note mentioning a word in script alone tells them nothing
+  at all — it is the same as leaving the sentence unfinished. This applies to
+  every mention, including the second and third time a word appears.
+  (The exampleThai field is the one exception: it has its own IPA field.)
 - Return null for context only when there is genuinely nothing worth saying.`
 
 const DESCRIBE_SCHEMA = {
@@ -179,9 +204,17 @@ const DESCRIBE_SCHEMA = {
           exampleThai: { type: 'string' },
           exampleIpa: { type: 'string' },
           exampleEnglish: { type: 'string' },
+          classifier: { type: ['string', 'null'] },
           context: { type: ['string', 'null'] },
         },
-        required: ['thai', 'exampleThai', 'exampleIpa', 'exampleEnglish', 'context'],
+        required: [
+          'thai',
+          'exampleThai',
+          'exampleIpa',
+          'exampleEnglish',
+          'classifier',
+          'context',
+        ],
         additionalProperties: false,
       },
     },
@@ -203,6 +236,8 @@ export interface Described {
   exampleThai: string
   exampleIpa: string
   exampleEnglish: string
+  /** For a noun: the classifier it takes, Thai plus romanisation. */
+  classifier: string | null
   context: string | null
 }
 
@@ -241,6 +276,68 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
 
   // Drop anything the model left empty rather than filing a blank example.
   return parsed.described.filter((entry) => entry.exampleThai.trim() !== '')
+}
+
+const TOPIC_SYSTEM = `You name the topic of a page of Thai lesson vocabulary.
+
+Given the words that were read off one lesson, return a short label for what
+the lesson is about — the kind of thing that would be the chapter title.
+
+- Two or three words, in English, capitalised like a title: "Family", "At the
+  market", "Numbers and counting", "Getting around".
+- Name what the words have in common, not the grammar they happen to use.
+- If the words genuinely have nothing in common — a mixed review page, a
+  grab-bag — return null rather than inventing a theme. A wrong label is worse
+  than none, because it is what the deck will be organised by.`
+
+const TOPIC_SCHEMA = {
+  type: 'object',
+  properties: { topic: { type: ['string', 'null'] } },
+  required: ['topic'],
+  additionalProperties: false,
+} as const
+
+/**
+ * Names the topic of a batch of imported vocabulary.
+ *
+ * Imports were landing ungrouped unless a pack was typed in by hand, which in
+ * practice meant nearly all of them: of 352 items, 270 had no pack at all. A
+ * deck you cannot pick a topic out of is a deck you can only practise whole.
+ * The words have just been read, so the thing that read them can say what they
+ * were about for a fraction of a cent.
+ */
+export async function classifyTopic(words: { thai: string; english: string }[]): Promise<string | null> {
+  if (words.length === 0) return null
+
+  const client = new Anthropic()
+  const stream = client.messages.stream({
+    model: MODELS.describe.model,
+    max_tokens: 2000,
+    system: TOPIC_SYSTEM,
+    output_config: {
+      effort: MODELS.describe.effort,
+      format: { type: 'json_schema', schema: TOPIC_SCHEMA },
+    },
+    messages: [
+      {
+        role: 'user',
+        content: JSON.stringify({
+          words: words.slice(0, 60).map((word) => word.english),
+        }),
+      },
+    ],
+  })
+
+  const response = await stream.finalMessage()
+  await recordUsage('name the topic', MODELS.describe.model, tokensFrom(response.usage))
+  if (response.stop_reason === 'refusal') return null
+
+  const text = response.content.find((block) => block.type === 'text')
+  if (!text || text.type !== 'text') return null
+
+  const parsed = JSON.parse(text.text) as { topic: string | null }
+  const topic = parsed.topic?.trim()
+  return topic ? topic.slice(0, 60) : null
 }
 
 const VERIFY_SYSTEM = `You are checking material before it is added to a Thai

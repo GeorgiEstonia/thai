@@ -1,12 +1,14 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
+import { eq } from 'drizzle-orm'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { __setTestDb, getDb, schema } from './db'
 import { selectedItems } from './practice'
+import { DESCRIBE_VERSION } from './extract'
 import {
   addWords,
   countDuplicateWords,
@@ -395,5 +397,79 @@ describe('examples and priority', () => {
     const [id] = await addWords([KIN])
     await setWordPriority(id, 99)
     expect((await listWords())[0].priority).toBe(1)
+  })
+})
+
+describe('redescribing after a prompt change', () => {
+  const KIN = { thai: 'กิน', ipa: 'gin', english: 'to eat', source: 'worksheet' as const }
+
+  it('stamps the current prompt generation when an example is written', async () => {
+    const [id] = await addWords([KIN])
+    await describeWord(id, {
+      exampleThai: 'กินข้าว',
+      exampleIpa: 'gin kʰâːw',
+      exampleEnglish: 'to eat rice',
+      classifier: null,
+      context: null,
+    })
+
+    expect((await listWords())[0].describeVersion).toBe(DESCRIBE_VERSION)
+  })
+
+  it('leaves an up-to-date item alone', async () => {
+    const [id] = await addWords([KIN])
+    await describeWord(id, {
+      exampleThai: 'กินข้าว',
+      exampleIpa: 'gin kʰâːw',
+      exampleEnglish: 'to eat rice',
+      classifier: null,
+      context: null,
+    })
+
+    expect(await wordsNeedingDescription(10)).toHaveLength(0)
+  })
+
+  it('picks up an item described by an older prompt, example and all', async () => {
+    const [id] = await addWords([KIN])
+    // What the rows written before classifiers existed look like.
+    await db
+      .update(schema.words)
+      .set({
+        exampleThai: 'กินข้าว',
+        exampleIpa: 'gin kʰâːw',
+        exampleEnglish: 'to eat rice',
+        describeVersion: 1,
+      })
+      .where(eq(schema.words.id, id))
+
+    const pending = await wordsNeedingDescription(10)
+    expect(pending).toHaveLength(1)
+    expect(pending[0].thai).toBe('กิน')
+  })
+
+  it('stores the classifier a noun takes', async () => {
+    const [id] = await addWords([{ ...KIN, thai: 'หมา', english: 'dog' }])
+    await describeWord(id, {
+      exampleThai: 'บ้านผมมีหมาสองตัว',
+      exampleIpa: 'bâːn pʰǒm miː mǎː sɔ̌ːŋ tuːa',
+      exampleEnglish: 'There are two dogs at my house.',
+      classifier: 'ตัว (tuːa)',
+      context: 'Casual word for dog.',
+    })
+
+    expect((await listWords())[0].classifier).toBe('ตัว (tuːa)')
+  })
+
+  it('leaves the classifier empty for something that is not a noun', async () => {
+    const [id] = await addWords([KIN])
+    await describeWord(id, {
+      exampleThai: 'กินข้าว',
+      exampleIpa: 'gin kʰâːw',
+      exampleEnglish: 'to eat rice',
+      classifier: '   ',
+      context: null,
+    })
+
+    expect((await listWords())[0].classifier).toBeNull()
   })
 })

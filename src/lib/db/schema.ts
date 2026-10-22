@@ -72,6 +72,25 @@ export const words = pgTable('words', {
   exampleThai: text('example_thai'),
   exampleIpa: text('example_ipa'),
   exampleEnglish: text('example_english'),
+  /**
+   * For a noun: the classifier it takes, as Thai plus romanisation.
+   *
+   * Its own column rather than a line in the note, because Thai cannot count
+   * or point at a noun without one — a noun learned without its classifier is
+   * a noun you cannot actually use in a sentence, so it belongs on the card as
+   * a fact in its own right.
+   */
+  classifier: text('classifier'),
+  /**
+   * Which generation of the describe prompt wrote this item's example.
+   *
+   * Bumped when the prompt changes in a way that makes older output wrong
+   * rather than merely different — items written before classifiers were
+   * required, or before every Thai word had to carry its romanisation, are
+   * missing something a reader needs, not just phrased differently. The
+   * backfill picks up anything behind the current version.
+   */
+  describeVersion: integer('describe_version').notNull().default(0),
   /** What you would want a teacher to tell you: register, usage, pitfalls. */
   context: text('context'),
   /**

@@ -47,6 +47,10 @@ export interface WordRecord {
   exampleThai?: string | null
   exampleIpa?: string | null
   exampleEnglish?: string | null
+  /** For a noun: the classifier it takes, Thai plus romanisation. */
+  classifier?: string | null
+  /** Which generation of the describe prompt wrote the example. */
+  describeVersion?: number
   /** Usage, register, pitfalls — what a teacher would tell you. */
   context?: string | null
   /** 1 = show more often, -1 = less often, 0 = the normal schedule. */
@@ -195,7 +199,15 @@ export function soundIsShared(item: PracticeItem): boolean {
  */
 export function produceHint(item: PracticeItem): string | null {
   if (!soundIsShared(item)) return null
-  if (item.type === 'character') return `${item.character.nameThai} — ${item.character.nameMeaning}`
-  if (item.type === 'vowel') return `as in ${item.vowel.exampleThai} (${item.vowel.exampleGloss})`
+
+  // Every piece of Thai here carries its romanisation. The script is the thing
+  // being learned, so a hint written in it alone is not a hint — and this one
+  // appears on the side of the card where the script is the answer.
+  if (item.type === 'character') {
+    return `${item.character.nameThai} (${item.character.namePaiboon}) — ${item.character.nameMeaning}`
+  }
+  if (item.type === 'vowel') {
+    return `as in ${item.vowel.exampleThai} (${item.vowel.exampleIpa}) — ${item.vowel.exampleGloss}`
+  }
   return null
 }

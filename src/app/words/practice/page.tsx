@@ -22,9 +22,17 @@ export default async function WordPracticePage() {
   const { ready, locked } = partitionPhrases(words, progress)
   const readyPhraseIds = new Set(ready.map((phrase) => phrase.id))
 
+  // Previews carry their romanisation: a row of Thai script alone is not
+  // something you can read yet, so it would not help you choose a pack.
   const packs = new Map<
     string,
-    { id: string; kind: 'word' | 'phrase'; label: string; preview: string[]; waiting: number }
+    {
+      id: string
+      kind: 'word' | 'phrase'
+      label: string
+      preview: { thai: string; ipa: string }[]
+      waiting: number
+    }
   >()
 
   for (const word of words) {
@@ -40,7 +48,7 @@ export default async function WordPracticePage() {
       waiting: 0,
     }
 
-    if (entry.preview.length < 5) entry.preview.push(word.thai)
+    if (entry.preview.length < 4) entry.preview.push({ thai: word.thai, ipa: word.ipa })
     for (const direction of DIRECTIONS) {
       const state = progress.get(cardKey('word', word.id, direction))
       if (!state || isDue(state, now)) entry.waiting++
@@ -80,8 +88,15 @@ export default async function WordPracticePage() {
         .slice(0, 3)
         .map(({ phrase, blockedBy }) => ({
           thai: phrase.thai,
+          ipa: phrase.ipa,
           english: phrase.english,
-          blockedBy: blockedBy.slice(0, 4),
+          // Looked back up so each blocking word can be shown with its sound
+          // and meaning — a list of bare script does not tell you what to go
+          // and practise.
+          blockedBy: blockedBy.slice(0, 4).map((thai) => {
+            const match = words.find((word) => word.thai === thai)
+            return { thai, ipa: match?.ipa ?? '', english: match?.english ?? '' }
+          }),
         }))}
     />
   )
