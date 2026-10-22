@@ -344,6 +344,81 @@ export async function classifyTopic(words: { thai: string; english: string }[]):
   return topic ? topic.slice(0, 60) : null
 }
 
+const SORT_SYSTEM = `You sort a pile of Thai vocabulary into topics.
+
+You are given a list of words and phrases that were imported without being
+grouped. Put each one into a topic, and return every item you were given.
+
+- Invent the topics yourself from what is actually in the list. Two or three
+  words each, capitalised like a title: "Food and eating", "Family", "Numbers",
+  "Getting around", "Everyday verbs".
+- Aim for topics of roughly ten to forty items. Two or three items on their own
+  is not a topic; forty-plus means it should be split.
+- Sort by what the word is ABOUT, not by its part of speech. "Verbs" is only a
+  topic when the verbs have nothing else in common.
+- A word that fits nowhere goes in "General". Use that sparingly — it is the
+  pile this exercise exists to empty.
+- Keep a phrase with the topic of the words inside it.
+- Return the item's Thai EXACTLY as it was given to you, unchanged and with
+  nothing added. It is what the result is matched against, so an altered one is
+  an item that silently keeps no topic at all.`
+
+const SORT_SCHEMA = {
+  type: 'object',
+  properties: {
+    sorted: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          thai: { type: 'string' },
+          pack: { type: 'string' },
+        },
+        required: ['thai', 'pack'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['sorted'],
+  additionalProperties: false,
+} as const
+
+/**
+ * Sorts loose vocabulary into topics.
+ *
+ * Done in one call rather than in batches on purpose: the topics have to be
+ * invented from the whole pile, and a model shown forty words at a time would
+ * coin a fresh set of labels for each batch and leave the deck sorted into
+ * near-duplicates of itself.
+ */
+export async function sortIntoPacks(
+  words: { thai: string; english: string; kind: string }[],
+): Promise<{ thai: string; pack: string }[]> {
+  if (words.length === 0) return []
+
+  const client = new Anthropic()
+  const stream = client.messages.stream({
+    model: MODELS.describe.model,
+    max_tokens: 32000,
+    system: SORT_SYSTEM,
+    output_config: {
+      effort: MODELS.describe.effort,
+      format: { type: 'json_schema', schema: SORT_SCHEMA },
+    },
+    messages: [{ role: 'user', content: JSON.stringify({ items: words }) }],
+  })
+
+  const response = await stream.finalMessage()
+  await recordUsage('sort into topics', MODELS.describe.model, tokensFrom(response.usage))
+  if (response.stop_reason === 'refusal') return []
+
+  const text = response.content.find((block) => block.type === 'text')
+  if (!text || text.type !== 'text') return []
+
+  const parsed = JSON.parse(text.text) as { sorted: { thai: string; pack: string }[] }
+  return parsed.sorted.filter((entry) => entry.thai?.trim() && entry.pack?.trim())
+}
+
 const VERIFY_SYSTEM = `You are checking material before it is added to a Thai
 learner's deck unseen.
 
