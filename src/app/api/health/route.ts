@@ -2,6 +2,11 @@ import { and, eq, sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 
 import { ensureSchema, getDb, schema } from '@/lib/db'
+import { DESCRIBE_VERSION } from '@/lib/extract'
+import { loadProgress } from '@/lib/practice'
+import { bareThaiRuns } from '@/lib/romanised'
+import { learnedWords, partitionPhrases } from '@/lib/unlock'
+import { listWords } from '@/lib/words'
 
 /**
  * Says what is actually broken, without a log viewer.
@@ -87,6 +92,72 @@ async function probeWrite() {
  * Counts only, never content: this endpoint is unauthenticated on purpose and
  * has no business handing out someone's vocabulary.
  */
+/**
+ * What is missing from the deck, and what the phrase gate is doing.
+ *
+ * Counts only — no vocabulary, so this says how much work there is without
+ * putting the deck itself on a public URL. "Some words have no example, a lot
+ * of nouns have no classifier, I only ever see one sentence" are three
+ * questions about scale, and guessing at them is how you end up fixing the
+ * wrong one.
+ */
+async function contentAudit() {
+  await ensureSchema()
+
+  const words = await listWords()
+  const progress = await loadProgress()
+
+  const unreadable = (text: string | null | undefined) => bareThaiRuns(text).length > 0
+
+  const missingExample = words.filter((w) => !w.exampleThai).length
+  const missingExampleReading = words.filter((w) => w.exampleThai && !w.exampleIpa).length
+  const missingExampleEnglish = words.filter((w) => w.exampleThai && !w.exampleEnglish).length
+  const bareNote = words.filter((w) => unreadable(w.context)).length
+  const bareClassifier = words.filter((w) => unreadable(w.classifier)).length
+  const missingReading = words.filter((w) => !w.ipa?.trim()).length
+  const missingEnglish = words.filter((w) => !w.english?.trim()).length
+  const noClassifier = words.filter((w) => w.kind === 'word' && !w.classifier?.trim()).length
+  const noPack = words.filter((w) => !w.pack).length
+  const staleVersion = words.filter((w) => (w.describeVersion ?? 0) < DESCRIBE_VERSION).length
+
+  // The phrase gate: why only one sentence ever shows up.
+  const { ready, locked } = partitionPhrases(words, progress)
+  const blockedCounts = locked.map((entry) => entry.blockedBy.length)
+  const learned = learnedWords(words, progress)
+
+  return {
+    words: words.length,
+    describeVersion: DESCRIBE_VERSION,
+    missing: {
+      example: missingExample,
+      exampleReading: missingExampleReading,
+      exampleEnglish: missingExampleEnglish,
+      reading: missingReading,
+      english: missingEnglish,
+      classifier: noClassifier,
+      pack: noPack,
+    },
+    unreadable: { note: bareNote, classifier: bareClassifier },
+    staleVersion,
+    phrases: {
+      total: words.filter((w) => w.kind === 'phrase').length,
+      ready: ready.length,
+      locked: locked.length,
+      // How many words a locked phrase is still waiting on. If this is mostly
+      // 3+, the gate is the reason the sentences never appear.
+      blockedByHistogram: blockedCounts.reduce<Record<string, number>>((acc, n) => {
+        const key = n >= 5 ? '5+' : String(n)
+        acc[key] = (acc[key] ?? 0) + 1
+        return acc
+      }, {}),
+    },
+    study: {
+      wordsRecalledOnce: learned.size,
+      cardsScheduled: progress.size,
+    },
+  }
+}
+
 async function deckStats() {
   // Applies any columns and tables the running code expects. Doing it here
   // means the health check reports the schema the app will actually use,
@@ -213,6 +284,7 @@ export async function GET(request: Request) {
   const write = params.get('probe') === 'write' ? await probeWrite() : undefined
   const deck = database.ok && params.get('deck') === '1' ? await deckStats() : undefined
   const packs = database.ok && params.get('packs') === '1' ? await packSummary() : undefined
+  const audit = database.ok && params.get('audit') === '1' ? await contentAudit() : undefined
 
   return NextResponse.json(
     {
@@ -221,6 +293,7 @@ export async function GET(request: Request) {
       write,
       deck,
       packs,
+      audit,
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
       // The commit above is baked in when the bundle is built, so a cached
       // build can report an old one while running current code — which is
