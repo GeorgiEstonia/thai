@@ -596,3 +596,97 @@ describe('buildSession stages', () => {
     expect(session.queue.map((e) => e.id)).toEqual(['a', 'b'])
   })
 })
+
+/**
+ * Practising one topic straight through feels better and is remembered worse:
+ * the answer is still in mind from the last card, so nothing is really being
+ * recalled. These check the session alternates between topics in blocks.
+ */
+describe('buildSession interleaving', () => {
+  const now = new Date('2026-10-26T00:00:00.000Z')
+  const seen = { intervalDays: 2, dueAt: now, reps: 4, lapses: 0 }
+  const unseen = { intervalDays: 0, dueAt: now, reps: 0, lapses: 0 }
+
+  function lanesOf(ids: string[]): string[] {
+    return ids.map((id) => id.split('-')[0])
+  }
+
+  it('alternates topics instead of running one to the end', () => {
+    const items = [
+      ...Array.from({ length: 12 }, (_, i) => ({ id: `a-${i}`, state: seen, lane: 'a' })),
+      ...Array.from({ length: 12 }, (_, i) => ({ id: `b-${i}`, state: seen, lane: 'b' })),
+    ]
+    const session = buildSession(items, now, {
+      maxNew: Number.POSITIVE_INFINITY,
+      blockSize: 6,
+    })
+
+    const lanes = lanesOf(session.queue.map((e) => e.id))
+    // Two topics, twelve cards each, six to a block: a b a b.
+    expect(lanes.slice(0, 6).every((l) => l === lanes[0])).toBe(true)
+    expect(lanes[6]).not.toBe(lanes[0])
+    expect(new Set(lanes).size).toBe(2)
+    expect(lanes).toHaveLength(24)
+  })
+
+  it('keeps a block together rather than switching every card', () => {
+    const items = [
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `a-${i}`, state: seen, lane: 'a' })),
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `b-${i}`, state: seen, lane: 'b' })),
+    ]
+    const lanes = lanesOf(
+      buildSession(items, now, { maxNew: Number.POSITIVE_INFINITY, blockSize: 3 }).queue.map(
+        (e) => e.id,
+      ),
+    )
+    // Four runs of three, never a run of one.
+    let runs = 1
+    for (let i = 1; i < lanes.length; i++) if (lanes[i] !== lanes[i - 1]) runs++
+    expect(runs).toBe(4)
+  })
+
+  it('carries on when a short topic runs out', () => {
+    const items = [
+      { id: 'a-0', state: seen, lane: 'a' },
+      ...Array.from({ length: 10 }, (_, i) => ({ id: `b-${i}`, state: seen, lane: 'b' })),
+    ]
+    const session = buildSession(items, now, {
+      maxNew: Number.POSITIVE_INFINITY,
+      blockSize: 3,
+    })
+    expect(session.queue).toHaveLength(11)
+  })
+
+  it('does not interleave when everything is one topic', () => {
+    const items = Array.from({ length: 5 }, (_, i) => ({ id: `a-${i}`, state: seen, lane: 'a' }))
+    expect(buildSession(items, now, { maxNew: Number.POSITIVE_INFINITY }).queue).toHaveLength(5)
+  })
+
+  /**
+   * One topic's new words must not spend the whole allowance, or the other
+   * topics in the sitting never appear at all.
+   */
+  it('gives each topic its own allowance of first-time cards', () => {
+    const items = [
+      ...Array.from({ length: 10 }, (_, i) => ({ id: `a-${i}`, state: unseen, lane: 'a' })),
+      ...Array.from({ length: 10 }, (_, i) => ({ id: `b-${i}`, state: unseen, lane: 'b' })),
+    ]
+    const lanes = lanesOf(buildSession(items, now, { maxNew: 3 }).queue.map((e) => e.id))
+    expect(lanes.filter((l) => l === 'a')).toHaveLength(3)
+    expect(lanes.filter((l) => l === 'b')).toHaveLength(3)
+  })
+
+  it('still puts words ahead of sentences across topics', () => {
+    const items = [
+      { id: 'a-w', state: seen, lane: 'a', stage: 0 },
+      { id: 'b-w', state: seen, lane: 'b', stage: 0 },
+      { id: 'a-s', state: seen, lane: 'a', stage: 1 },
+      { id: 'b-s', state: seen, lane: 'b', stage: 1 },
+    ]
+    const ids = buildSession(items, now, { maxNew: Number.POSITIVE_INFINITY }).queue.map(
+      (e) => e.id,
+    )
+    expect(ids.slice(0, 2).sort()).toEqual(['a-w', 'b-w'])
+    expect(ids.slice(2).sort()).toEqual(['a-s', 'b-s'])
+  })
+})

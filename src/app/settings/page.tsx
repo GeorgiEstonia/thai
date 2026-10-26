@@ -1,11 +1,13 @@
 import Link from 'next/link'
 
 import { requireAuth } from '@/lib/auth'
+import { readPreferences } from '@/lib/preferences'
 import { loadStats } from '@/lib/stats'
 import { learnedWords, partitionPhrases } from '@/lib/unlock'
 import { deckSummary, listWords } from '@/lib/words'
 import { loadProgress } from '@/lib/practice'
 
+import CharacterSetting from './CharacterSetting'
 import SoundSetting from './SoundSetting'
 import SignOut from './SignOut'
 
@@ -14,11 +16,12 @@ export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   await requireAuth()
 
-  const [deck, progress, stats, words] = await Promise.all([
+  const [deck, progress, stats, words, preferences] = await Promise.all([
     deckSummary(),
     loadProgress(),
     loadStats(),
     listWords(),
+    readPreferences(),
   ])
 
   // "Words you know" means recalled right at least once — the same bar the
@@ -89,8 +92,13 @@ export default async function SettingsPage() {
 
       <section className="mt-6">
         <h2 className="text-xs uppercase tracking-widest text-muted">Practice</h2>
-        <div className="mt-2 rounded-xl border border-edge px-3 py-3">
-          <SoundSetting />
+        <div className="mt-2 space-y-2">
+          <div className="rounded-xl border border-edge px-3 py-3">
+            <SoundSetting />
+          </div>
+          <div className="rounded-xl border border-edge px-3 py-3">
+            <CharacterSetting initial={preferences.characters} />
+          </div>
         </div>
       </section>
 

@@ -40,6 +40,9 @@ export interface TopicChoice {
   reason: 'due' | 'continue' | 'fresh'
 }
 
+/** Topics in one sitting. Enough to interleave, few enough to stay coherent. */
+export const TOPICS_PER_SESSION = 3
+
 const PREVIEW_WORDS = 4
 
 /**
@@ -63,7 +66,7 @@ export function topicsFor(
     const id = packGroupId(word.pack)
     const topic = topics.get(id) ?? {
       id,
-      label: word.pack ?? 'Everything else',
+      label: word.pack ?? 'Unsorted',
       wordsWaiting: 0,
       phrasesWaiting: 0,
       wordsInProgress: 0,
@@ -151,4 +154,52 @@ export function chooseTopic(topics: Topic[]): TopicChoice | null {
  */
 function countDueOnly(topic: Topic): number {
   return Math.min(topic.wordsInProgress, topic.wordsWaiting)
+}
+
+/**
+ * The topics for today's practice.
+ *
+ * More than one, because practising a single topic to the end feels like
+ * progress and is remembered worse — the answer never leaves your head
+ * between cards, so nothing is actually recalled. A few topics alternating
+ * forces the retrieval each time. One topic at a time is still there when you
+ * want it; you just tap the topic instead.
+ *
+ * Which few changes with the day rather than with every page load. A set that
+ * reshuffles while you are looking at it is not a plan for today, and
+ * returning to the screen should not quietly change what you were about to do.
+ */
+export function chooseTopics(
+  topics: Topic[],
+  now: Date = new Date(),
+  limit: number = TOPICS_PER_SESSION,
+): Topic[] {
+  if (topics.length === 0) return []
+
+  const owed = topics.filter((topic) => topic.wordsInProgress > 0)
+  const fresh = topics.filter((topic) => topic.wordsInProgress === 0)
+
+  // What you already owe comes first: a topic you have put work into is where
+  // skipping today actually costs you something.
+  const byBacklog = [...owed].sort(
+    (a, b) =>
+      b.wordsWaiting + b.phrasesWaiting - (a.wordsWaiting + a.phrasesWaiting) || b.newest - a.newest,
+  )
+
+  // Newest first among the untouched, since the newest topic is the lesson
+  // you have just had.
+  const byAge = [...fresh].sort((a, b) => b.newest - a.newest)
+
+  const picked = [...byBacklog, ...byAge].slice(0, limit)
+
+  // Rotated by the day, so the same deck does not open on the same topic every
+  // morning while still being stable for the whole of one day.
+  const offset = dayNumber(now) % Math.max(picked.length, 1)
+  return [...picked.slice(offset), ...picked.slice(0, offset)]
+}
+
+/** Days since the epoch in local time, so the set turns over at midnight. */
+function dayNumber(now: Date): number {
+  const local = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.floor(local.getTime() / 86_400_000)
 }

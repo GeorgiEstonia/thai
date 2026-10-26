@@ -4,15 +4,17 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 /**
- * Two areas, deliberately separate: the writing system, and vocabulary. They
- * are different kinds of study and mixing their controls on one screen made
- * both harder to scan.
+ * Three places: practise, add to the deck, everything else.
+ *
+ * It used to be Characters, Words and More, which split the two things you
+ * practise into separate tabs and made the writing system a subject you had
+ * to decide to study — so one you could quietly stop studying. Letters are a
+ * setting now, mixed into practice, and the tabs are the three things you
+ * actually come here to do.
  */
-// /drill and /progress serve both kinds of material, so neither tab claims
-// them — highlighting "Characters" while drilling words is just wrong.
 const TABS = [
-  { href: '/practice', label: 'Characters', match: ['/practice'] },
-  { href: '/words', label: 'Words', match: ['/words', '/capture', '/generate'] },
+  { href: '/practice', label: 'Practise', match: ['/practice', '/drill'] },
+  { href: '/add', label: 'Add', match: ['/add', '/capture', '/generate', '/words'] },
   { href: '/settings', label: 'More', match: ['/settings', '/progress'] },
 ] as const
 

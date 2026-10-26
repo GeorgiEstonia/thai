@@ -1,54 +1,73 @@
-import { PRACTICE_ITEMS, DIRECTIONS, cardKey } from '@/content/items'
-import PractiseCta from '@/components/PractiseCta'
-import { requireAuth } from '@/lib/auth'
-import { loadDueSnapshot } from '@/lib/practice'
-import { countDuplicateWords } from '@/lib/words'
-
+import { DIRECTIONS, PRACTICE_ITEMS, cardKey } from '@/content/items'
 import DescribeRunner from '@/components/DescribeRunner'
 import RegroupRunner from '@/components/RegroupRunner'
 import SeedRunner from '@/components/SeedRunner'
-
 import TidyDuplicates from '@/app/words/TidyDuplicates'
+import { requireAuth } from '@/lib/auth'
+import { loadProgress } from '@/lib/practice'
+import { readPreferences } from '@/lib/preferences'
+import { isDue } from '@/lib/srs'
+import { chooseTopics, topicsFor } from '@/lib/topics'
+import { countDuplicateWords, listWords } from '@/lib/words'
 
-import SelectionClient from './SelectionClient'
+import PracticeHome from './PracticeHome'
 
 export const dynamic = 'force-dynamic'
+
+/** Character and vowel cards waiting, for when they are mixed into practice. */
+function lettersWaiting(progress: Map<string, { dueAt: Date }>, now: Date): number {
+  let total = 0
+  for (const item of PRACTICE_ITEMS) {
+    for (const direction of DIRECTIONS) {
+      const state = progress.get(cardKey(item.type, item.id, direction))
+      if (!state || isDue(state as never, now)) total++
+    }
+  }
+  return total
+}
 
 export default async function PracticePage() {
   await requireAuth()
 
-  // This is the screen the app opens on, so it is where a deck that needs
-  // tidying will actually be found.
-  const [{ dueByKey, seenKeys }, duplicates] = await Promise.all([
-    loadDueSnapshot(),
+  const [progress, words, duplicates, preferences] = await Promise.all([
+    loadProgress(),
+    listWords(),
     countDuplicateWords(),
+    readPreferences(),
   ])
-  const seen = new Set(seenKeys)
 
-  // Everything waiting: reviews that have come due, plus anything never
-  // started. Counting only reviews reads as "nothing due" on a fresh deck,
-  // which is the opposite of the truth.
-  const due = PRACTICE_ITEMS.reduce((total, item) => {
-    for (const direction of DIRECTIONS) {
-      const key = cardKey(item.type, item.id, direction)
-      if (!seen.has(key) || dueByKey[key]) total++
-    }
-    return total
-  }, 0)
+  const now = new Date()
+  const topics = topicsFor(words, progress, now)
+  const today = chooseTopics(topics, now)
 
-  const groups = [...new Set(PRACTICE_ITEMS.map((item) => item.group))]
-  const reviewHref = `/drill?groups=${encodeURIComponent(groups.join(','))}&dirs=recognise,produce`
+  const letterGroups = preferences.characters
+    ? [...new Set(PRACTICE_ITEMS.map((item) => item.group))]
+    : []
+  const letters = preferences.characters ? lettersWaiting(progress, now) : 0
 
   return (
     <>
-      <div className="px-5 pt-6 max-w-md w-full mx-auto">
-        <PractiseCta href={reviewHref} due={due} label="Practise" />
+      <PracticeHome
+        today={today.map((topic) => ({
+          id: topic.id,
+          label: topic.label,
+          waiting: topic.wordsWaiting + topic.phrasesWaiting,
+        }))}
+        topics={topics.map((topic) => ({
+          id: topic.id,
+          label: topic.label,
+          waiting: topic.wordsWaiting + topic.phrasesWaiting,
+          preview: topic.preview,
+        }))}
+        letterGroups={letterGroups}
+        letters={letters}
+      />
+      <div className="px-5 max-w-md w-full mx-auto">
         <TidyDuplicates duplicates={duplicates} />
         <SeedRunner />
         <RegroupRunner />
         <DescribeRunner />
       </div>
-      <SelectionClient dueByKey={dueByKey} seenKeys={seenKeys} />
     </>
   )
 }

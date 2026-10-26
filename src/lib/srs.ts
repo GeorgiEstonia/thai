@@ -231,6 +231,16 @@ export interface SessionItem {
    * Defaults to 0, which is one stage and the behaviour everything else has.
    */
   stage?: number
+  /**
+   * Which topic this card belongs to, used to interleave rather than block.
+   *
+   * Practising one topic straight through feels better and is remembered
+   * worse: the answer stays in mind from the last card, so recall is never
+   * actually tested. Alternating between a few topics forces the retrieval
+   * each time. Blocks rather than a full shuffle, because jumping topic every
+   * single card loses the context that made grouping worth doing.
+   */
+  lane?: string
 }
 
 export interface BuildSessionOptions {
@@ -238,6 +248,59 @@ export interface BuildSessionOptions {
   maxNew?: number
   /** Injectable for deterministic tests. */
   rng?: () => number
+  /** Cards from one topic before moving to the next. */
+  blockSize?: number
+}
+
+/**
+ * How many cards of one topic run together before switching.
+ *
+ * Small enough that you are never settled, large enough that the topic is
+ * still doing its work of putting related words beside each other.
+ */
+export const INTERLEAVE_BLOCK = 6
+
+/**
+ * Deals items out topic by topic, a block at a time.
+ *
+ * Lanes are consumed round-robin, so a short topic runs out early and the rest
+ * carry on rather than the whole session stopping at its length.
+ */
+function interleave(items: SessionItem[], blockSize: number, rng: () => number): SessionItem[] {
+  const lanes = new Map<string, SessionItem[]>()
+  for (const item of items) {
+    const lane = item.lane ?? ''
+    const existing = lanes.get(lane)
+    if (existing) existing.push(item)
+    else lanes.set(lane, [item])
+  }
+
+  if (lanes.size <= 1) return shuffle(items, rng)
+
+  const queues = [...lanes.values()].map((lane) => shuffle(lane, rng))
+  const out: SessionItem[] = []
+  let index = 0
+
+  while (queues.some((queue) => queue.length > 0)) {
+    const queue = queues[index % queues.length]
+    if (queue.length > 0) out.push(...queue.splice(0, blockSize))
+    index++
+  }
+
+  return out
+}
+
+/** Keeps at most `limit` first-time cards from each topic. */
+function capPerLane(items: SessionItem[], limit: number): SessionItem[] {
+  if (!Number.isFinite(limit)) return items
+  const taken = new Map<string, number>()
+  return items.filter((item) => {
+    const lane = item.lane ?? ''
+    const count = taken.get(lane) ?? 0
+    if (count >= limit) return false
+    taken.set(lane, count + 1)
+    return true
+  })
 }
 
 function shuffle<T>(items: T[], rng: () => number): T[] {
@@ -260,7 +323,7 @@ export function buildSession(
   now: Date,
   options: BuildSessionOptions = {},
 ): SessionState {
-  const { maxNew = 8, rng = Math.random } = options
+  const { maxNew = 8, rng = Math.random, blockSize = INTERLEAVE_BLOCK } = options
 
   const due = items.filter((item) => isDue(item.state, now))
 
@@ -272,13 +335,18 @@ export function buildSession(
   const queue: SessionEntry[] = stages.flatMap((stage) => {
     const inStage = due.filter((item) => (item.stage ?? 0) === stage)
     const reviews = inStage.filter((item) => item.state.reps > 0)
-    const fresh = inStage.filter((item) => item.state.reps === 0).slice(0, maxNew)
+      // Capped per lane, not per stage: one topic's new words must not use up
+    // the whole allowance and leave the other topics out of the sitting.
+    const fresh = capPerLane(
+      inStage.filter((item) => item.state.reps === 0),
+      maxNew,
+    )
 
     return [
-      ...shuffle(reviews, rng).map(
+      ...interleave(reviews, blockSize, rng).map(
         (item): SessionEntry => ({ id: item.id, kind: 'review' as const, reinforcement: false }),
       ),
-      ...shuffle(fresh, rng).map(
+      ...interleave(fresh, blockSize, rng).map(
         (item): SessionEntry => ({ id: item.id, kind: 'new' as const, reinforcement: false }),
       ),
     ]

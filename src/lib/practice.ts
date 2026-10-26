@@ -50,6 +50,8 @@ export interface DeckCard {
    * so meeting those words a few minutes earlier is most of its value.
    */
   stage: number
+  /** The topic, so a sitting can alternate between topics rather than block. */
+  lane: string
 }
 
 export function parseSelection(params: {
@@ -172,6 +174,7 @@ export async function loadDeck(selection: Selection, now: Date): Promise<DeckCar
         state: progress.get(key) ?? newState(now),
         note: notes.get(`${item.type}:${item.id}`) ?? null,
         stage: item.type === 'word' && item.word.kind === 'phrase' ? SENTENCE_STAGE : WORD_STAGE,
+        lane: item.group,
       }
     }),
   )

@@ -130,9 +130,9 @@ describe('topicsFor', () => {
     expect(topics.map((t) => t.label)).toEqual(['Family'])
   })
 
-  it('names the ungrouped pile rather than leaving it blank', () => {
+  it('names the unsorted pile rather than leaving it blank', () => {
     const [topic] = topicsFor([word('1', 'ซ้าย', null)], new Map(), NOW)
-    expect(topic.label).toBe('Everything else')
+    expect(topic.label).toBe('Unsorted')
   })
 
   it('shows a few words with their readings, so a topic is recognisable', () => {

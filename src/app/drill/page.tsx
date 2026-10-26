@@ -25,7 +25,12 @@ export default async function DrillPage({
   // screen, so silently dropping most of it is wrong. A cap made sense only
   // when batches were unlocked for you.
   const session = buildSession(
-    deck.map((card) => ({ id: card.key, state: card.state, stage: card.stage })),
+    deck.map((card) => ({
+      id: card.key,
+      state: card.state,
+      stage: card.stage,
+      lane: card.lane,
+    })),
     now,
     { maxNew: Number.POSITIVE_INFINITY },
   )
