@@ -14,10 +14,28 @@ import type { SrsState } from './srs'
  *
  * This is i+1 made mechanical — every phrase you are shown is one step past
  * what you already have, never five.
+ *
+ * "One step past" is the whole point, and for a long time the code did not
+ * allow it: a phrase waited until *every* word in it was known, which is i+0,
+ * not i+1. With eighty words recalled and five hundred in the deck, that
+ * locked 174 of 176 sentences — the gate was not gating, it was a wall. One
+ * unknown word is now allowed through, which is the thing the paragraph above
+ * always claimed to describe.
  */
 
 /** One correct recall. Deliberately low: the gate is "met it", not "owns it". */
 export const UNLOCK_INTERVAL_DAYS = 1
+
+/**
+ * Unknown words a phrase may still contain and be shown anyway.
+ *
+ * One, so a sentence is always at most one new word past what you have. Zero
+ * is not a stricter version of this idea but a different one, and it starves:
+ * a four-word sentence needs all four words to land in your known set by
+ * coincidence, which for a deck much larger than your progress almost never
+ * happens.
+ */
+export const UNLOCK_ALLOWANCE = 1
 
 /**
  * The shortest Thai string worth matching inside a phrase.
@@ -109,7 +127,11 @@ export function gateFor(
   if (components.length === 0) return { unlocked: true, blockedBy: [] }
 
   const blockedBy = components.filter((thai) => !learned.has(thai))
-  return { unlocked: blockedBy.length === 0, blockedBy }
+
+  // blockedBy is still every word you do not have, even once the phrase is
+  // open — it is what the card shows you to pre-empt the one word you are
+  // about to not recognise, so it must not be trimmed to the allowance.
+  return { unlocked: blockedBy.length <= UNLOCK_ALLOWANCE, blockedBy }
 }
 
 export interface LockedPhrase {

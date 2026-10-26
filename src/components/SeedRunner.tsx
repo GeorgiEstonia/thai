@@ -9,6 +9,10 @@ interface Applied {
   alreadyHad: number
 }
 
+interface Revised {
+  updated: number
+}
+
 /**
  * Files vocabulary that shipped with the app, on sight.
  *
@@ -19,6 +23,7 @@ interface Applied {
  */
 export default function SeedRunner() {
   const [applied, setApplied] = useState<Applied[] | null>(null)
+  const [revised, setRevised] = useState<Revised | null>(null)
   const [pending, setPending] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
   const started = useRef(false)
@@ -31,10 +36,13 @@ export default function SeedRunner() {
       try {
         const look = await fetch('/api/seed')
         if (!look.ok) return
-        const { pending: waiting } = (await look.json()) as {
+        const { pending: waiting, revisions } = (await look.json()) as {
           pending: { items: number }[]
+          revisions: boolean
         }
-        if (waiting.length === 0) return
+        // Either there is new vocabulary to file, or there are examples and
+        // classifiers waiting to be written onto what is already here.
+        if (waiting.length === 0 && !revisions) return
 
         setPending(waiting.reduce((sum, set) => sum + set.items, 0))
 
@@ -43,8 +51,9 @@ export default function SeedRunner() {
           setFailed(true)
           return
         }
-        const result = (await run.json()) as { applied: Applied[] }
+        const result = (await run.json()) as { applied: Applied[]; revised: Revised }
         setApplied(result.applied)
+        setRevised(result.revised)
       } catch {
         setFailed(true)
       }
@@ -69,11 +78,14 @@ export default function SeedRunner() {
   }
 
   const added = applied.reduce((sum, set) => sum + set.added, 0)
-  if (added === 0) return null
+  const updated = revised?.updated ?? 0
+  if (added === 0 && updated === 0) return null
 
   return (
     <div className="mt-4 rounded-xl bg-surface px-3 py-3 text-xs leading-relaxed text-muted">
-      <p className="text-foreground">Added {added} items from your latest lessons.</p>
+      {added > 0 ? (
+        <p className="text-foreground">Added {added} items from your latest lessons.</p>
+      ) : null}
       <ul className="mt-2 space-y-0.5">
         {applied
           .filter((set) => set.added > 0)
@@ -84,9 +96,15 @@ export default function SeedRunner() {
             </li>
           ))}
       </ul>
-      <p className="mt-2">
-        Examples and classifiers are being written for them now; you can practise meanwhile.
-      </p>
+      {updated > 0 ? (
+        <p className={added > 0 ? 'mt-2' : 'text-foreground'}>
+          Filled in examples, classifiers and usage notes on {updated} cards.
+        </p>
+      ) : (
+        <p className="mt-2">
+          Examples and classifiers are being written for them now; you can practise meanwhile.
+        </p>
+      )}
     </div>
   )
 }

@@ -6,9 +6,10 @@ import type { SrsState } from './srs'
 import { componentsOf, gateFor, learnedWords, partitionPhrases } from './unlock'
 
 /**
- * The rule under test: a phrase is only offered once each of the words inside
- * it has been recalled correctly at least once. A sentence should never be the
- * place you meet a word for the first time.
+ * The rule under test: a phrase is offered once it is at most one unknown word
+ * past what you have — i+1. A sentence should never be the place you meet five
+ * words for the first time, but demanding you already know all of them is a
+ * different rule that starves: it left 174 of 176 sentences locked.
  */
 
 const NOW = new Date('2026-09-03T00:00:00.000Z')
@@ -34,8 +35,11 @@ const KIN = word('w1', 'กิน', 'to eat')
 const KHAAW = word('w2', 'ข้าว', 'rice')
 const MAA = word('w3', 'หมา', 'dog')
 const EAT_RICE = phrase('p1', 'กินข้าว', 'to eat rice')
+/** Three components, so it can be two or more words short. */
+const DOG_EATS_RICE = phrase('p2', 'หมากินข้าว', 'the dog eats rice')
 
 const DECK = [KIN, KHAAW, MAA, EAT_RICE]
+const BIG_DECK = [KIN, KHAAW, MAA, DOG_EATS_RICE]
 
 describe('componentsOf', () => {
   it('finds the words a phrase is built from', () => {
@@ -91,9 +95,35 @@ describe('learnedWords', () => {
 })
 
 describe('gateFor', () => {
-  it('locks a phrase while any of its words is unlearned', () => {
+  it('opens a phrase that is one unknown word away', () => {
     const learned = learnedWords(DECK, progressFor(['w1']))
-    expect(gateFor(EAT_RICE, DECK, learned)).toEqual({ unlocked: false, blockedBy: ['ข้าว'] })
+    expect(gateFor(EAT_RICE, DECK, learned)).toEqual({ unlocked: true, blockedBy: ['ข้าว'] })
+  })
+
+  /**
+   * Still reported as blocking even though the phrase is open: the card shows
+   * it to pre-empt the one word you are about to not recognise.
+   */
+  it('still names the word you do not have, so the card can show it', () => {
+    const learned = learnedWords(DECK, progressFor(['w1']))
+    expect(gateFor(EAT_RICE, DECK, learned).blockedBy).toEqual(['ข้าว'])
+  })
+
+  it('locks a phrase that is two or more unknown words away', () => {
+    const learned = learnedWords(BIG_DECK, progressFor(['w1']))
+    const gate = gateFor(DOG_EATS_RICE, BIG_DECK, learned)
+    expect(gate.unlocked).toBe(false)
+    expect(gate.blockedBy.sort()).toEqual(['หมา', 'ข้าว'].sort())
+  })
+
+  it('opens that phrase as soon as it is down to one unknown word', () => {
+    const learned = learnedWords(BIG_DECK, progressFor(['w1', 'w2']))
+    expect(gateFor(DOG_EATS_RICE, BIG_DECK, learned).unlocked).toBe(true)
+  })
+
+  it('locks a phrase when none of its words is known', () => {
+    const learned = learnedWords(BIG_DECK, progressFor([]))
+    expect(gateFor(DOG_EATS_RICE, BIG_DECK, learned).unlocked).toBe(false)
   })
 
   it('unlocks once every word has been had right once', () => {
@@ -110,12 +140,18 @@ describe('gateFor', () => {
 
 describe('partitionPhrases', () => {
   it('separates what is practisable now from what is waiting', () => {
-    const { ready, locked } = partitionPhrases(DECK, progressFor(['w1']))
+    const { ready, locked } = partitionPhrases(BIG_DECK, progressFor(['w1']))
 
     expect(ready).toEqual([])
     expect(locked).toHaveLength(1)
-    expect(locked[0].phrase.id).toBe('p1')
-    expect(locked[0].blockedBy).toEqual(['ข้าว'])
+    expect(locked[0].phrase.id).toBe('p2')
+    expect(locked[0].blockedBy.sort()).toEqual(['หมา', 'ข้าว'].sort())
+  })
+
+  it('offers a phrase that is one word short rather than holding it back', () => {
+    const { ready, locked } = partitionPhrases(DECK, progressFor(['w1']))
+    expect(ready.map((p) => p.id)).toEqual(['p1'])
+    expect(locked).toEqual([])
   })
 
   it('moves a phrase across once its last word lands', () => {

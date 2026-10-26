@@ -101,42 +101,6 @@ async function probeWrite() {
  * questions about scale, and guessing at them is how you end up fixing the
  * wrong one.
  */
-/**
- * TEMPORARY. The vocabulary that still needs an example, a classifier or a
- * readable note — spelling, gloss and kind, and nothing else.
- *
- * Here because the content is being rewritten by hand this session rather than
- * by the paid describe pipeline, and the deck cannot be read from outside the
- * app any other way. Delete this and its parameter once that is done; it is
- * not a feature, and nothing in the app calls it.
- */
-async function itemsNeedingWork() {
-  await ensureSchema()
-  const words = await listWords()
-
-  return words
-    .filter(
-      (w) =>
-        !w.exampleThai ||
-        bareThaiRuns(w.context).length > 0 ||
-        bareThaiRuns(w.classifier).length > 0 ||
-        (w.describeVersion ?? 0) < DESCRIBE_VERSION,
-    )
-    .map((w) => ({
-      t: w.thai,
-      e: w.english,
-      k: w.kind === 'phrase' ? 'p' : 'w',
-      // What it is short of, so the rewrite can be aimed.
-      need: [
-        !w.exampleThai ? 'ex' : null,
-        !w.classifier?.trim() ? 'clf' : null,
-        bareThaiRuns(w.context).length > 0 ? 'bare' : null,
-      ]
-        .filter(Boolean)
-        .join(','),
-    }))
-}
-
 async function contentAudit() {
   await ensureSchema()
 
@@ -321,7 +285,6 @@ export async function GET(request: Request) {
   const deck = database.ok && params.get('deck') === '1' ? await deckStats() : undefined
   const packs = database.ok && params.get('packs') === '1' ? await packSummary() : undefined
   const audit = database.ok && params.get('audit') === '1' ? await contentAudit() : undefined
-  const items = database.ok && params.get('items') === '1' ? await itemsNeedingWork() : undefined
 
   return NextResponse.json(
     {
@@ -331,7 +294,6 @@ export async function GET(request: Request) {
       deck,
       packs,
       audit,
-      items,
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
       // The commit above is baked in when the bundle is built, so a cached
       // build can report an old one while running current code — which is
