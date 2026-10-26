@@ -1,62 +1,33 @@
 import Link from 'next/link'
 
-import { DIRECTIONS, cardKey, packGroupId } from '@/content/items'
 import { requireAuth } from '@/lib/auth'
 import { loadProgress } from '@/lib/practice'
+import { chooseTopic, topicsFor } from '@/lib/topics'
 import { partitionPhrases } from '@/lib/unlock'
 import { listWords } from '@/lib/words'
-import { isDue } from '@/lib/srs'
 
-import WordSelection from './WordSelection'
+import TopicSelection from './TopicSelection'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Practice is organised by topic, not by the whole deck at once.
+ *
+ * Six hundred items sorted only by what is due means a sitting that goes from
+ * "turn left" to an aunt to a plate, and each card arrives with nothing around
+ * it. The deck is already sorted into topics on import; this makes that the
+ * unit of practice, so a sitting covers left, right and turn-left together and
+ * then the sentences built out of them.
+ */
 export default async function WordPracticePage() {
   await requireAuth()
 
   const [progress, words] = await Promise.all([loadProgress(), listWords()])
   const now = new Date()
 
-  // Phrases whose words you haven't met yet are not offered at all — showing
-  // them would make the sentence the place you meet those words.
-  const { ready, locked } = partitionPhrases(words, progress)
-  const readyPhraseIds = new Set(ready.map((phrase) => phrase.id))
-
-  // Previews carry their romanisation: a row of Thai script alone is not
-  // something you can read yet, so it would not help you choose a pack.
-  const packs = new Map<
-    string,
-    {
-      id: string
-      kind: 'word' | 'phrase'
-      label: string
-      preview: { thai: string; ipa: string }[]
-      waiting: number
-    }
-  >()
-
-  for (const word of words) {
-    if (word.kind === 'phrase' && !readyPhraseIds.has(word.id)) continue
-
-    const group = packGroupId(word.pack)
-    const key = `${word.kind}|${group}`
-    const entry = packs.get(key) ?? {
-      id: group,
-      kind: word.kind,
-      label: word.pack ?? 'Ungrouped',
-      preview: [],
-      waiting: 0,
-    }
-
-    if (entry.preview.length < 4) entry.preview.push({ thai: word.thai, ipa: word.ipa })
-    for (const direction of DIRECTIONS) {
-      const state = progress.get(cardKey('word', word.id, direction))
-      if (!state || isDue(state, now)) entry.waiting++
-    }
-    packs.set(key, entry)
-  }
-
-  const list = [...packs.values()].sort((a, b) => a.label.localeCompare(b.label))
+  const topics = topicsFor(words, progress, now)
+  const choice = chooseTopic(topics)
+  const { locked } = partitionPhrases(words, progress)
 
   if (words.length === 0) {
     return (
@@ -78,11 +49,20 @@ export default async function WordPracticePage() {
   }
 
   return (
-    <WordSelection
-      packs={list}
+    <TopicSelection
+      topics={topics.map((topic) => ({
+        id: topic.id,
+        label: topic.label,
+        wordsWaiting: topic.wordsWaiting,
+        phrasesWaiting: topic.phrasesWaiting,
+        totalWords: topic.totalWords,
+        totalPhrases: topic.totalPhrases,
+        preview: topic.preview,
+      }))}
+      chosen={choice ? { id: choice.topic.id, label: choice.topic.label, reason: choice.reason } : null}
       lockedCount={locked.length}
-      // The handful closest to unlocking, so the screen can say what practising
-      // words is actually buying you rather than just that something is locked.
+      // The handful closest to opening, so the screen can say what practising
+      // words is actually buying you rather than just that something is shut.
       nextUp={[...locked]
         .sort((a, b) => a.blockedBy.length - b.blockedBy.length)
         .slice(0, 3)
@@ -90,9 +70,6 @@ export default async function WordPracticePage() {
           thai: phrase.thai,
           ipa: phrase.ipa,
           english: phrase.english,
-          // Looked back up so each blocking word can be shown with its sound
-          // and meaning — a list of bare script does not tell you what to go
-          // and practise.
           blockedBy: blockedBy.slice(0, 4).map((thai) => {
             const match = words.find((word) => word.thai === thai)
             return { thai, ipa: match?.ipa ?? '', english: match?.english ?? '' }

@@ -219,6 +219,18 @@ export interface SessionState {
 export interface SessionItem {
   id: string
   state: SrsState
+  /**
+   * Which stage of the sitting this belongs to. Lower goes first, and the
+   * shuffle happens inside a stage rather than across them.
+   *
+   * This is what lets a topic session revise the words of a topic and only
+   * then try its sentences, which is the order the sentences were built for:
+   * a sentence is practice at putting known words together, so meeting its
+   * words a minute earlier is most of the value.
+   *
+   * Defaults to 0, which is one stage and the behaviour everything else has.
+   */
+  stage?: number
 }
 
 export interface BuildSessionOptions {
@@ -239,7 +251,9 @@ function shuffle<T>(items: T[], rng: () => number): T[] {
 
 /**
  * Builds the queue for one sitting: everything currently due, reviews before
- * new material so you clear existing debt before taking on more.
+ * new material so you clear existing debt before taking on more — and, where
+ * items carry a stage, stage by stage so words come round before the
+ * sentences built out of them.
  */
 export function buildSession(
   items: SessionItem[],
@@ -249,17 +263,26 @@ export function buildSession(
   const { maxNew = 8, rng = Math.random } = options
 
   const due = items.filter((item) => isDue(item.state, now))
-  const reviews = due.filter((item) => item.state.reps > 0)
-  const fresh = due.filter((item) => item.state.reps === 0).slice(0, maxNew)
 
-  const queue: SessionEntry[] = [
-    ...shuffle(reviews, rng).map(
-      (item): SessionEntry => ({ id: item.id, kind: 'review', reinforcement: false }),
-    ),
-    ...shuffle(fresh, rng).map(
-      (item): SessionEntry => ({ id: item.id, kind: 'new', reinforcement: false }),
-    ),
-  ]
+  // The new-card cap is per stage, not per sitting. Sharing one budget would
+  // let a topic's words use it all up and leave its sentences — the point of
+  // the session — out of the queue entirely.
+  const stages = [...new Set(due.map((item) => item.stage ?? 0))].sort((a, b) => a - b)
+
+  const queue: SessionEntry[] = stages.flatMap((stage) => {
+    const inStage = due.filter((item) => (item.stage ?? 0) === stage)
+    const reviews = inStage.filter((item) => item.state.reps > 0)
+    const fresh = inStage.filter((item) => item.state.reps === 0).slice(0, maxNew)
+
+    return [
+      ...shuffle(reviews, rng).map(
+        (item): SessionEntry => ({ id: item.id, kind: 'review' as const, reinforcement: false }),
+      ),
+      ...shuffle(fresh, rng).map(
+        (item): SessionEntry => ({ id: item.id, kind: 'new' as const, reinforcement: false }),
+      ),
+    ]
+  })
 
   return { queue, reinforcementCounts: {}, lapses: {}, completed: [] }
 }

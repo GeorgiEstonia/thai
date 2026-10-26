@@ -55,6 +55,8 @@ export interface WordRecord {
   context?: string | null
   /** 1 = show more often, -1 = less often, 0 = the normal schedule. */
   priority?: number
+  /** When it entered the deck, which stands in for which lesson it came from. */
+  createdAt?: Date | string | null
 }
 
 /** Selection group id for a pack — packs are selectable just like phonemes. */

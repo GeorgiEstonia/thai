@@ -527,3 +527,72 @@ describe('the other direction follows a miss', () => {
     expect(after.queue).toHaveLength(1)
   })
 })
+
+/**
+ * A topic sitting revises the topic's words and only then tries the sentences
+ * built out of them, so the words are fresh when the sentence asks for them.
+ */
+describe('buildSession stages', () => {
+  const now = new Date('2026-10-26T00:00:00.000Z')
+  const unseen = { intervalDays: 0, dueAt: now, reps: 0, lapses: 0 }
+  const seen = { intervalDays: 2, dueAt: now, reps: 4, lapses: 0 }
+
+  it('puts every word ahead of every sentence', () => {
+    const session = buildSession(
+      [
+        { id: 's1', state: unseen, stage: 1 },
+        { id: 'w1', state: unseen, stage: 0 },
+        { id: 's2', state: unseen, stage: 1 },
+        { id: 'w2', state: unseen, stage: 0 },
+      ],
+      now,
+      { maxNew: Number.POSITIVE_INFINITY },
+    )
+
+    const ids = session.queue.map((entry) => entry.id)
+    const lastWord = Math.max(ids.indexOf('w1'), ids.indexOf('w2'))
+    const firstSentence = Math.min(ids.indexOf('s1'), ids.indexOf('s2'))
+    expect(lastWord).toBeLessThan(firstSentence)
+  })
+
+  it('still does reviews before new material inside a stage', () => {
+    const session = buildSession(
+      [
+        { id: 'new', state: unseen, stage: 0 },
+        { id: 'review', state: seen, stage: 0 },
+      ],
+      now,
+      { maxNew: Number.POSITIVE_INFINITY },
+    )
+    expect(session.queue.map((e) => e.id)).toEqual(['review', 'new'])
+  })
+
+  /**
+   * The cap is per stage. Shared, a topic's words could spend all of it and
+   * leave its sentences — the point of the sitting — out of the queue.
+   */
+  it('gives each stage its own allowance of new cards', () => {
+    const session = buildSession(
+      [
+        { id: 'w1', state: unseen, stage: 0 },
+        { id: 'w2', state: unseen, stage: 0 },
+        { id: 's1', state: unseen, stage: 1 },
+      ],
+      now,
+      { maxNew: 2 },
+    )
+    expect(session.queue.map((e) => e.id).sort()).toEqual(['s1', 'w1', 'w2'])
+  })
+
+  it('behaves exactly as before when nothing carries a stage', () => {
+    const session = buildSession(
+      [
+        { id: 'a', state: seen },
+        { id: 'b', state: unseen },
+      ],
+      now,
+      { maxNew: Number.POSITIVE_INFINITY },
+    )
+    expect(session.queue.map((e) => e.id)).toEqual(['a', 'b'])
+  })
+})

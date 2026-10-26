@@ -22,6 +22,10 @@ import { type SrsState, isDue, isLeech, newState } from './srs'
 /** Words and phrases are practised separately — see lib/unlock.ts for why. */
 export type VocabKind = 'word' | 'phrase'
 
+/** Stages within a sitting. Characters and vowels sit with the words. */
+export const WORD_STAGE = 0
+export const SENTENCE_STAGE = 1
+
 export interface Selection {
   /** Group ids to include. Empty means everything. */
   groups: string[]
@@ -40,6 +44,12 @@ export interface DeckCard {
   state: SrsState
   /** A mnemonic you wrote yourself, if there is one. */
   note: string | null
+  /**
+   * Which stage of the sitting this belongs to: words before the sentences
+   * built out of them. A sentence is practice at assembling words you have,
+   * so meeting those words a few minutes earlier is most of its value.
+   */
+  stage: number
 }
 
 export function parseSelection(params: {
@@ -161,6 +171,7 @@ export async function loadDeck(selection: Selection, now: Date): Promise<DeckCar
         direction,
         state: progress.get(key) ?? newState(now),
         note: notes.get(`${item.type}:${item.id}`) ?? null,
+        stage: item.type === 'word' && item.word.kind === 'phrase' ? SENTENCE_STAGE : WORD_STAGE,
       }
     }),
   )

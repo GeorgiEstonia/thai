@@ -29,6 +29,7 @@ export async function listWords(): Promise<WordRecord[]> {
     describeVersion: row.describeVersion,
     context: row.context,
     priority: row.priority,
+    createdAt: row.createdAt,
   }))
 }
 
