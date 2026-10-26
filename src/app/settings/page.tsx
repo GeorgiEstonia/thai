@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { requireAuth } from '@/lib/auth'
-import { countDuplicateWords, listPacks, listWords } from '@/lib/words'
+import { deckSummary } from '@/lib/words'
 import { loadProgress } from '@/lib/practice'
 
 import SoundSetting from './SoundSetting'
@@ -12,24 +12,16 @@ export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   await requireAuth()
 
-  const [words, packs, duplicates, progress] = await Promise.all([
-    listWords(),
-    listPacks(),
-    countDuplicateWords(),
-    loadProgress(),
-  ])
-
-  const described = words.filter((word) => word.exampleThai).length
-  const prioritised = words.filter((word) => (word.priority ?? 0) !== 0).length
+  const [deck, progress] = await Promise.all([deckSummary(), loadProgress()])
 
   const rows = [
-    { label: 'Words', value: words.filter((word) => word.kind === 'word').length },
-    { label: 'Phrases', value: words.filter((word) => word.kind === 'phrase').length },
-    { label: 'Packs', value: packs.length },
-    { label: 'With an example', value: `${described} of ${words.length}` },
-    { label: 'Prioritised by you', value: prioritised },
+    { label: 'Words', value: deck.words },
+    { label: 'Phrases', value: deck.phrases },
+    { label: 'Packs', value: deck.packs },
+    { label: 'With an example', value: `${deck.described} of ${deck.total}` },
+    { label: 'Prioritised by you', value: deck.prioritised },
     { label: 'Cards being scheduled', value: progress.size },
-    { label: 'Duplicate rows', value: duplicates },
+    { label: 'Duplicate rows', value: deck.duplicates },
   ]
 
   return (

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 
 import { type ItemType, type WordRecord, wordItem } from '@/content/items'
 
@@ -220,6 +220,58 @@ export async function countDuplicateWords(): Promise<number> {
     else seen.add(key)
   }
   return duplicates
+}
+
+/**
+ * Every number the settings screen shows, in one query.
+ *
+ * It used to assemble these from listWords(), twice over indirectly — both
+ * listPacks and countDuplicateWords call it as well — so opening settings read
+ * the whole table three times to end up displaying seven integers. Counting is
+ * the database's job; the rows were never needed here.
+ */
+export interface DeckSummary {
+  words: number
+  phrases: number
+  packs: number
+  described: number
+  total: number
+  prioritised: number
+  duplicates: number
+}
+
+export async function deckSummary(): Promise<DeckSummary> {
+  await ensureSchema()
+
+  // Built with the query builder rather than a raw execute, because the two
+  // drivers in use disagree about the shape a raw result comes back in — an
+  // array from postgres.js, an object with .rows from PGlite. A summary that
+  // silently reads zeroes under one of them is worse than no summary, and the
+  // tests run on the other one.
+  const [row] = await getDb()
+    .select({
+      words: sql<number>`count(*) filter (where ${schema.words.kind} = 'word')::int`,
+      phrases: sql<number>`count(*) filter (where ${schema.words.kind} = 'phrase')::int`,
+      packs: sql<number>`count(distinct ${schema.words.pack})::int`,
+      described: sql<number>`count(*) filter (where ${schema.words.exampleThai} is not null)::int`,
+      total: sql<number>`count(*)::int`,
+      prioritised: sql<number>`count(*) filter (where ${schema.words.priority} <> 0)::int`,
+      // Same rule as identity(): same spelling and same kind is the same word.
+      duplicates: sql<number>`(count(*) - count(distinct (${schema.words.kind}, btrim(${schema.words.thai}))))::int`,
+    })
+    .from(schema.words)
+
+  return (
+    row ?? {
+      words: 0,
+      phrases: 0,
+      packs: 0,
+      described: 0,
+      total: 0,
+      prioritised: 0,
+      duplicates: 0,
+    }
+  )
 }
 
 /** Distinct pack names, for the selection screen and the add form. */

@@ -86,9 +86,15 @@ export function ensureSchema(): Promise<void> {
   if (!schemaReady) {
     const db = getDb()
     schemaReady = (async () => {
-      for (const statement of ADDITIVE_COLUMNS) {
-        await db.execute(raw.raw(statement))
-      }
+      // One round trip, not one per statement. These run before the first
+      // query of every cold instance, so eleven sequential round trips to a
+      // hosted database put a second or more in front of the first page load.
+      //
+      // Wrapped in a DO block rather than simply joined with semicolons: the
+      // driver sends this over the extended query protocol, which carries one
+      // statement per message and rejects a joined list outright. A DO block
+      // is one statement that happens to contain eleven.
+      await db.execute(raw.raw(`do $$ begin\n${ADDITIVE_COLUMNS.join(';\n')};\nend $$;`))
     })().catch((error) => {
       schemaReady = null
       throw error
@@ -112,18 +118,36 @@ export function getDb(): Db {
   // database speaks plain TCP, so it must stay off there.
   const isLocal = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url)
 
-  // One connection, deliberately. This app has a single user, so there is no
-  // concurrency to win — and the local dev database (PGlite behind a socket)
-  // serves one connection at a time, so a larger pool turns any concurrent
-  // query into ECONNRESET. Serverless instances each get their own.
+  // The local dev database (PGlite behind a socket) serves one connection at a
+  // time, so a larger pool there turns any concurrent query into ECONNRESET.
+  // A hosted one is happy to parallelise, and a page that asks four questions
+  // at once should not have to ask them one after another.
   const sql =
-    globalForDb.thaiSql ?? postgres(url, { max: 1, ssl: isLocal ? false : 'require' })
+    globalForDb.thaiSql ??
+    postgres(url, {
+      max: isLocal ? 1 : 3,
+      ssl: isLocal ? false : 'require',
+      // Let an idle connection go, so instances that have scaled out and gone
+      // quiet stop holding slots the live one needs.
+      idle_timeout: 20,
+    })
   const db = drizzle(sql, { schema })
 
-  if (process.env.NODE_ENV !== 'production') {
-    globalForDb.thaiSql = sql
-    globalForDb.thaiDb = db
-  }
+  // Cached in production too, which it once was not.
+  //
+  // The reasoning was that each serverless instance gets its own pool anyway,
+  // so caching only mattered for dev-mode module reloading. But the pool was
+  // then rebuilt on *every getDb() call* — and a page that loads words, packs,
+  // duplicates and progress together makes several. Each one opened a fresh
+  // connection and a fresh TLS handshake to the hosted database, and never
+  // closed it: the settings page cost seven, which read as "nothing happens"
+  // once the total ran past the platform's function timeout, and locally, on a
+  // database that permits one connection, failed outright.
+  //
+  // An instance is a process and should hold one pool for its lifetime. That
+  // is what globalThis is for here, in every environment.
+  globalForDb.thaiSql = sql
+  globalForDb.thaiDb = db
 
   return db
 }

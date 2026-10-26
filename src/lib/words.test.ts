@@ -12,6 +12,7 @@ import { DESCRIBE_VERSION } from './extract'
 import {
   addWords,
   countDuplicateWords,
+  deckSummary,
   describeWord,
   deleteWord,
   listPacks,
@@ -471,5 +472,80 @@ describe('redescribing after a prompt change', () => {
     })
 
     expect((await listWords())[0].classifier).toBeNull()
+  })
+})
+
+/**
+ * The settings page used to build its seven numbers in JavaScript from the
+ * whole table — read three times over, since listPacks and countDuplicateWords
+ * each fetch it again. These pin the aggregate to the behaviour it replaced,
+ * because a counting rule that drifts from identity() would report duplicates
+ * that the cleanup then refuses to find.
+ */
+describe('deckSummary', () => {
+  it('agrees with counting the rows by hand', async () => {
+    await addWords([
+      { thai: 'หมา', ipa: 'mǎː', english: 'dog', source: 'manual', pack: 'Animals' },
+      { thai: 'แมว', ipa: 'mɛːw', english: 'cat', source: 'manual', pack: 'Animals' },
+      { thai: 'ไปตลาด', ipa: 'paj ta.làːt', english: 'go to the market', kind: 'phrase', source: 'manual', pack: 'Shopping' },
+      { thai: 'กิน', ipa: 'kin', english: 'to eat', source: 'manual', pack: null },
+    ])
+
+    const all = await listWords()
+    const summary = await deckSummary()
+
+    expect(summary.total).toBe(all.length)
+    expect(summary.words).toBe(all.filter((w) => w.kind === 'word').length)
+    expect(summary.phrases).toBe(all.filter((w) => w.kind === 'phrase').length)
+    expect(summary.packs).toBe((await listPacks()).length)
+    expect(summary.duplicates).toBe(await countDuplicateWords())
+  })
+
+  it('counts an example only once it has one', async () => {
+    await addWords([
+      { thai: 'หมา', ipa: 'mǎː', english: 'dog', source: 'manual' },
+      { thai: 'แมว', ipa: 'mɛːw', english: 'cat', source: 'manual' },
+    ])
+    expect((await deckSummary()).described).toBe(0)
+
+    const [first] = await listWords()
+    await describeWord(first.id, {
+      exampleThai: 'หมาตัวนี้น่ารัก',
+      exampleIpa: 'mǎː tuːa níː nâː.rák',
+      exampleEnglish: 'This dog is cute',
+      classifier: 'ตัว /tuːa/',
+      context: null,
+    })
+    expect((await deckSummary()).described).toBe(1)
+  })
+
+  it('counts what you have prioritised, in either direction', async () => {
+    await addWords([
+      { thai: 'หมา', ipa: 'mǎː', english: 'dog', source: 'manual' },
+      { thai: 'แมว', ipa: 'mɛːw', english: 'cat', source: 'manual' },
+      { thai: 'กิน', ipa: 'kin', english: 'to eat', source: 'manual' },
+    ])
+    const all = await listWords()
+    await setWordPriority(all[0].id, 1)
+    await setWordPriority(all[1].id, -1)
+
+    expect((await deckSummary()).prioritised).toBe(2)
+  })
+
+  /** The rule is identity(): same spelling, same kind. Not one or the other. */
+  it('matches identity() on what counts as a duplicate', async () => {
+    await client.exec(`
+      insert into words (thai, ipa, english, kind, source) values
+        ('หมา', 'mǎː', 'dog', 'word', 'manual'),
+        ('หมา', 'mǎː', 'dog again', 'word', 'manual'),
+        ('หมา', 'mǎː', 'dog, as a phrase', 'phrase', 'manual')`)
+
+    const summary = await deckSummary()
+    expect(summary.duplicates).toBe(1)
+    expect(summary.duplicates).toBe(await countDuplicateWords())
+  })
+
+  it('reports zeroes for an empty deck rather than failing', async () => {
+    expect(await deckSummary()).toMatchObject({ total: 0, words: 0, packs: 0, duplicates: 0 })
   })
 })
