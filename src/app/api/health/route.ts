@@ -169,10 +169,25 @@ export async function GET(request: Request) {
     ANTHROPIC_API_KEY: Boolean(process.env.ANTHROPIC_API_KEY),
   }
 
-  let database: { ok: boolean; error?: string; tables?: number; words?: number } = { ok: false }
+  let database: {
+    ok: boolean
+    error?: string
+    tables?: number
+    words?: number
+    pingMs?: number
+    region?: string
+  } = { ok: false }
 
   try {
     const db = getDb()
+
+    // How far the database actually is from the function, which is otherwise
+    // guesswork. A co-located pair answers this in single digits; a hundred
+    // milliseconds and up means they are in different parts of the world and
+    // every round trip on every page is paying for the distance.
+    const pingStart = performance.now()
+    await db.execute(sql`select 1`)
+    const pingMs = Math.round(performance.now() - pingStart)
     // Does the schema actually exist? A reachable but empty database is the
     // most likely failure after a deploy — db:push run against the wrong URL.
     const tables = await db.execute<{ count: number }>(
@@ -184,6 +199,9 @@ export async function GET(request: Request) {
       ok: true,
       tables: Number((tables as unknown as { count: number }[])[0]?.count ?? 0),
       words: words.length,
+      pingMs,
+      // Where this function ran, so the ping has a second end to it.
+      region: process.env.VERCEL_REGION,
     }
   } catch (error) {
     // Drizzle wraps driver errors, so the useful part ("no pg_hba entry",
