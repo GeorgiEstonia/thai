@@ -1,5 +1,7 @@
 import { eq, inArray, isNull } from 'drizzle-orm'
 
+import { canonicalTopic } from '@/content/topics'
+
 import { describeKey } from './describe-match'
 import { ensureSchema, getDb, schema } from './db'
 import { sortIntoPacks } from './extract'
@@ -17,7 +19,9 @@ import { sortIntoPacks } from './extract'
  */
 
 /** Marks the job done, so a word left ungrouped later doesn't retrigger it. */
-export const REGROUP_JOB_ID = 'regroup-ungrouped-v1'
+// v2: the first run filed words under topics it invented for itself. They are
+// a fixed list now, so the pile is worth sorting again against it.
+export const REGROUP_JOB_ID = 'regroup-ungrouped-v2'
 
 /** Below this it isn't worth a model call — put them in a pack by hand. */
 const WORTH_SORTING = 5
@@ -73,7 +77,15 @@ export async function regroupUngrouped(): Promise<RegroupResult> {
   // Matched the same tolerant way as the describe pass: the model is told to
   // echo the Thai unchanged, and mostly does, but a reading appended to it
   // must not silently cost the word its topic.
-  const packFor = new Map(assignments.map((entry) => [describeKey(entry.thai), entry.pack.trim()]))
+  // Canonical names only. The prompt says to use the list and nothing else,
+  // but a near-miss coming back ("Hotels & travel") would restart the sprawl
+  // one synonym at a time, and a word left unfiled is cheaper than that.
+  const packFor = new Map(
+    assignments.flatMap((entry) => {
+      const pack = canonicalTopic(entry.pack)
+      return pack ? [[describeKey(entry.thai), pack] as const] : []
+    }),
+  )
 
   const byPack = new Map<string, string[]>()
   for (const word of loose) {

@@ -62,7 +62,7 @@ const LOOSE = [
 describe('regroupUngrouped', () => {
   it('finds only the words with no pack', async () => {
     await addWords(LOOSE)
-    await addWords([{ thai: 'บ้าน', ipa: 'bâan', english: 'house', pack: 'Home', source: 'manual' }])
+    await addWords([{ thai: 'บ้าน', ipa: 'bâan', english: 'house', pack: 'Home and living', source: 'manual' }])
 
     const loose = await ungroupedWords()
     expect(loose).toHaveLength(LOOSE.length)
@@ -72,40 +72,40 @@ describe('regroupUngrouped', () => {
   it('files each word under the topic it was given', async () => {
     await addWords(LOOSE)
     mocked.mockResolvedValue([
-      { thai: 'หมา', pack: 'Animals' },
-      { thai: 'แมว', pack: 'Animals' },
-      { thai: 'นก', pack: 'Animals' },
-      { thai: 'กิน', pack: 'Everyday verbs' },
-      { thai: 'ดื่ม', pack: 'Everyday verbs' },
-      { thai: 'นอน', pack: 'Everyday verbs' },
+      { thai: 'หมา', pack: 'Animals and nature' },
+      { thai: 'แมว', pack: 'Animals and nature' },
+      { thai: 'นก', pack: 'Animals and nature' },
+      { thai: 'กิน', pack: 'Core words and particles' },
+      { thai: 'ดื่ม', pack: 'Core words and particles' },
+      { thai: 'นอน', pack: 'Core words and particles' },
     ])
 
     const result = await regroupUngrouped()
     expect(result.sorted).toBe(6)
 
     const words = await listWords()
-    expect(words.filter((w) => w.pack === 'Animals')).toHaveLength(3)
-    expect(words.filter((w) => w.pack === 'Everyday verbs')).toHaveLength(3)
+    expect(words.filter((w) => w.pack === 'Animals and nature')).toHaveLength(3)
+    expect(words.filter((w) => w.pack === 'Core words and particles')).toHaveLength(3)
   })
 
   it('reports the packs it made, largest first', async () => {
     await addWords(LOOSE)
     mocked.mockResolvedValue([
-      { thai: 'หมา', pack: 'Animals' },
-      { thai: 'แมว', pack: 'Animals' },
-      { thai: 'นก', pack: 'Animals' },
-      { thai: 'กิน', pack: 'Verbs' },
-      { thai: 'ดื่ม', pack: 'Verbs' },
-      { thai: 'นอน', pack: 'Sleep' },
+      { thai: 'หมา', pack: 'Animals and nature' },
+      { thai: 'แมว', pack: 'Animals and nature' },
+      { thai: 'นก', pack: 'Animals and nature' },
+      { thai: 'กิน', pack: 'Core words and particles' },
+      { thai: 'ดื่ม', pack: 'Core words and particles' },
+      { thai: 'นอน', pack: 'Free time' },
     ])
 
     const result = await regroupUngrouped()
-    expect(result.packs[0]).toEqual({ pack: 'Animals', count: 3 })
+    expect(result.packs[0]).toEqual({ pack: 'Animals and nature', count: 3 })
   })
 
   it('leaves an item the model skipped exactly as it was', async () => {
     await addWords(LOOSE)
-    mocked.mockResolvedValue([{ thai: 'หมา', pack: 'Animals' }])
+    mocked.mockResolvedValue([{ thai: 'หมา', pack: 'Animals and nature' }])
 
     const result = await regroupUngrouped()
 
@@ -116,7 +116,7 @@ describe('regroupUngrouped', () => {
 
   it('still matches when the model appends a reading to the word', async () => {
     await addWords(LOOSE)
-    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: `${w.thai} (${w.ipa})`, pack: 'Animals' })))
+    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: `${w.thai} (${w.ipa})`, pack: 'Animals and nature' })))
 
     const result = await regroupUngrouped()
     expect(result.sorted).toBe(6)
@@ -124,18 +124,18 @@ describe('regroupUngrouped', () => {
 
   it('never touches a word that already had a pack', async () => {
     await addWords(LOOSE)
-    await addWords([{ thai: 'บ้าน', ipa: 'bâan', english: 'house', pack: 'Home', source: 'manual' }])
-    mocked.mockResolvedValue([{ thai: 'บ้าน', pack: 'Animals' }])
+    await addWords([{ thai: 'บ้าน', ipa: 'bâan', english: 'house', pack: 'Home and living', source: 'manual' }])
+    mocked.mockResolvedValue([{ thai: 'บ้าน', pack: 'Animals and nature' }])
 
     await regroupUngrouped()
 
     const house = (await listWords()).find((w) => w.thai === 'บ้าน')
-    expect(house?.pack).toBe('Home')
+    expect(house?.pack).toBe('Home and living')
   })
 
   it('runs once, so a word left loose later does not retrigger it', async () => {
     await addWords(LOOSE)
-    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Animals' })))
+    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Animals and nature' })))
     await regroupUngrouped()
 
     mocked.mockClear()
@@ -147,7 +147,7 @@ describe('regroupUngrouped', () => {
 
   it('records the job even so it cannot be charged for twice', async () => {
     await addWords(LOOSE)
-    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Animals' })))
+    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Animals and nature' })))
     await regroupUngrouped()
 
     const rows = await db.select().from(schema.seedImports)
@@ -165,9 +165,32 @@ describe('regroupUngrouped', () => {
 
   it('reports nothing pending once it has run', async () => {
     await addWords(LOOSE)
-    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Animals' })))
+    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Animals and nature' })))
     await regroupUngrouped()
 
     expect(await regroupPending()).toBe(0)
+  })
+})
+
+/**
+ * The sprawl came back one synonym at a time, so a name that is not on the
+ * list is refused rather than accepted as a new topic.
+ */
+describe('topics that are not on the list', () => {
+  it('leaves a word unfiled rather than inventing a topic for it', async () => {
+    await addWords(LOOSE)
+    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'Hotels & travelling' })))
+
+    const result = await regroupUngrouped()
+    expect(result.sorted).toBe(0)
+    expect((await listWords()).every((w) => w.pack === null)).toBe(true)
+  })
+
+  it('accepts a canonical name whatever its casing', async () => {
+    await addWords(LOOSE)
+    mocked.mockResolvedValue(LOOSE.map((w) => ({ thai: w.thai, pack: 'animals and nature' })))
+
+    await regroupUngrouped()
+    expect((await listWords()).every((w) => w.pack === 'Animals and nature')).toBe(true)
   })
 })

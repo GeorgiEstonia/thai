@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { isAuthenticated } from '@/lib/auth'
+import { applyRetopic, retopicPending } from '@/lib/retopic'
 import { applyRevisions, revisionsPending } from '@/lib/revise'
 import { applyPendingSeeds, pendingSeeds } from '@/lib/seed'
 
@@ -23,7 +24,9 @@ export async function POST() {
   try {
     const applied = await applyPendingSeeds()
     const revised = await applyRevisions()
-    return NextResponse.json({ ...applied, revised })
+    // After the seeds, so vocabulary filed a moment ago is renamed too.
+    const retopiced = await applyRetopic()
+    return NextResponse.json({ ...applied, revised, retopiced })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message.slice(0, 200) : 'failed' },
@@ -36,9 +39,14 @@ export async function POST() {
 export async function GET() {
   if (!(await isAuthenticated())) return NextResponse.json({ error: 'auth' }, { status: 401 })
 
-  const [pending, revisions] = await Promise.all([pendingSeeds(), revisionsPending()])
+  const [pending, revisions, retopic] = await Promise.all([
+    pendingSeeds(),
+    revisionsPending(),
+    retopicPending(),
+  ])
   return NextResponse.json({
     pending: pending.map((set) => ({ id: set.id, pack: set.pack, items: set.items.length })),
     revisions,
+    retopic,
   })
 }

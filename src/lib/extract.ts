@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
+import { TOPICS, canonicalTopic, topicList } from '@/content/topics'
+
 import type { ExtractedWord } from './db/schema'
 import { describeKey } from './describe-match'
 import { bareThaiRuns, isFullyRomanised } from './romanised'
@@ -356,17 +358,22 @@ export async function describeWords(items: DescribeInput[]): Promise<Described[]
   )
 }
 
-const TOPIC_SYSTEM = `You name the topic of a page of Thai lesson vocabulary.
+const TOPIC_SYSTEM = `You file a page of Thai lesson vocabulary under one of
+the topics that already exist.
 
-Given the words that were read off one lesson, return a short label for what
-the lesson is about — the kind of thing that would be the chapter title.
+These are the topics. Choose the one that fits best, spelled exactly:
 
-- Two or three words, in English, capitalised like a title: "Family", "At the
-  market", "Numbers and counting", "Getting around".
-- Name what the words have in common, not the grammar they happen to use.
-- If the words genuinely have nothing in common — a mixed review page, a
-  grab-bag — return null rather than inventing a theme. A wrong label is worse
-  than none, because it is what the deck will be organised by.`
+${topicList()}
+
+- Return one of those names, exactly as written, or null.
+- Do NOT invent a topic, even a better one. Naming its own topic per page is
+  what gave this deck four separate topics for hotels and five for food; the
+  value of a topic is that the same subject lands in the same place twice.
+- Null when the page genuinely has nothing in common — a mixed review page, a
+  grab-bag. Its words then get filed one at a time instead, which is the right
+  outcome for a page that is not about anything.
+- "Core words and particles" is for the small words that hold sentences
+  together, not a drawer for anything awkward.`
 
 const TOPIC_SCHEMA = {
   type: 'object',
@@ -414,41 +421,23 @@ export async function classifyTopic(words: { thai: string; english: string }[]):
   if (!text || text.type !== 'text') return null
 
   const parsed = JSON.parse(text.text) as { topic: string | null }
-  const topic = parsed.topic?.trim()
-  return topic ? topic.slice(0, 60) : null
+  // Checked against the list rather than trusted: a near-miss ("Hotels &
+  // travel") would start the sprawl again, one synonym at a time.
+  return canonicalTopic(parsed.topic)
 }
-
-const TOPIC_LIST_SYSTEM = `You choose the topics for a pile of Thai vocabulary.
-
-You are given the English meanings of words and phrases that were imported
-without being grouped. Return a list of topic names that between them cover
-the pile.
-
-- Two or three words each, capitalised like a title: "Food and eating",
-  "Family", "Numbers", "Getting around", "Everyday verbs".
-- Aim for topics that would hold roughly ten to forty of these items. Ten to
-  fifteen topics for a few hundred items is about right.
-- Name what the words are ABOUT. "Verbs" is only a topic when the verbs have
-  nothing else in common.
-- Include "General" last, for the ones that fit nowhere.
-- Return the names only. Nothing is being assigned yet.`
-
-const TOPIC_LIST_SCHEMA = {
-  type: 'object',
-  properties: { packs: { type: 'array', items: { type: 'string' } } },
-  required: ['packs'],
-  additionalProperties: false,
-} as const
 
 const SORT_SYSTEM = `You file Thai vocabulary under topics that already exist.
 
-You are given a list of topic names and a list of items. Put every item under
-one of those topics.
+These are the topics, and the only ones:
 
-- Use ONLY the topic names you were given, spelled exactly as given. Do not
-  invent a new one; anything that fits nowhere goes under "General".
-- Sort by what the word is about, not by its part of speech.
+${topicList()}
+
+- Use ONLY these names, spelled exactly as written. Do not invent one.
+- Sort by what the word is ABOUT, not by its part of speech.
 - Keep a phrase with the topic of the words inside it.
+- "Core words and particles" is for particles, pronouns, question words and
+  the handful of verbs that appear in every sentence — ไป, มา, มี, เป็น. It
+  is not a drawer: a word with a subject goes under its subject.
 - Return every item you were given, and return its Thai EXACTLY as given —
   unchanged, with nothing added. It is what the result is matched against, so
   an altered one is an item that silently keeps no topic at all.`
@@ -483,33 +472,6 @@ export interface SortableWord {
   kind: string
 }
 
-async function chooseTopics(words: SortableWord[]): Promise<string[]> {
-  const client = new Anthropic()
-  const stream = client.messages.stream({
-    model: MODELS.describe.model,
-    max_tokens: 4000,
-    system: TOPIC_LIST_SYSTEM,
-    output_config: {
-      effort: MODELS.describe.effort,
-      format: { type: 'json_schema', schema: TOPIC_LIST_SCHEMA },
-    },
-    messages: [
-      { role: 'user', content: JSON.stringify({ meanings: words.map((w) => w.english) }) },
-    ],
-  })
-
-  const response = await stream.finalMessage()
-  await recordUsage('choose topics', MODELS.describe.model, tokensFrom(response.usage))
-  if (response.stop_reason === 'refusal') return []
-
-  const text = response.content.find((block) => block.type === 'text')
-  if (!text || text.type !== 'text') return []
-
-  const parsed = JSON.parse(text.text) as { packs: string[] }
-  const packs = parsed.packs.map((pack) => pack.trim()).filter(Boolean)
-  return packs.includes('General') ? packs : [...packs, 'General']
-}
-
 async function fileBatch(
   words: SortableWord[],
   packs: string[],
@@ -538,24 +500,25 @@ async function fileBatch(
 }
 
 /**
- * Sorts loose vocabulary into topics, in two passes.
+ * Sorts loose vocabulary into topics.
  *
- * The topics are chosen once, from the meanings of the whole pile, and the
- * items are then filed against that fixed list in batches that run together.
+ * Every batch is filed against the one shipped list of topics, in parallel.
  *
  * One call over everything was the obvious shape and the wrong one: a few
  * hundred items in a single request ran for over ten minutes, far past the
  * ceiling a serverless function gets, so in production it would simply have
- * been killed. Splitting the filing is what makes it fast; fixing the topic
- * list first is what stops each batch inventing its own near-duplicate labels.
+ * been killed. Splitting the filing is what makes it fast; the topics being
+ * fixed is what stops each batch inventing its own near-duplicate labels.
  */
 export async function sortIntoPacks(
   words: SortableWord[],
 ): Promise<{ thai: string; pack: string }[]> {
   if (words.length === 0) return []
 
-  const packs = await chooseTopics(words)
-  if (packs.length === 0) return []
+  // No first pass to choose the topics: they are fixed, which is the whole
+  // point. The pass that used to invent them is what produced near-duplicates
+  // a batch at a time.
+  const packs = [...TOPICS]
 
   const batches: SortableWord[][] = []
   for (let start = 0; start < words.length; start += SORT_BATCH) {
