@@ -36,7 +36,7 @@ export async function tidyDuplicates(): Promise<{ removed: number }> {
   const { removed } = await removeDuplicateWords()
 
   revalidatePath('/words')
-  revalidatePath('/words/practice')
+  revalidatePath('/practice')
   revalidatePath('/practice')
   return { removed }
 }
@@ -54,5 +54,5 @@ export async function editWord(
   await requireAuth()
   await updateWord(id, patch)
   revalidatePath('/words')
-  revalidatePath('/words/practice')
+  revalidatePath('/practice')
 }

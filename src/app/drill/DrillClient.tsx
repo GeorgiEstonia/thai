@@ -26,6 +26,7 @@ import {
 } from '@/lib/srs'
 
 import { type PendingGrade, enqueue, flushPending, readPending } from '@/lib/pending'
+import type { Segment } from '@/lib/segment'
 import { soundRevealsAnswer, speechTextFor, useSpeech } from '@/lib/speech'
 
 import GlyphFaces from '@/components/GlyphFaces'
@@ -33,6 +34,8 @@ import GlyphFaces from '@/components/GlyphFaces'
 import CardEditor from './CardEditor'
 import PriorityControl from './PriorityControl'
 import MnemonicEditor from './MnemonicEditor'
+import TappableThai, { type Picked } from './TappableThai'
+import WordPanel from './WordPanel'
 
 import { gradeCard, saveMnemonic } from './actions'
 
@@ -42,6 +45,10 @@ export interface DrillCard {
   direction: Direction
   state: SrsState
   note: string | null
+  /** The sentence split into tappable words, or null when it cannot be split. */
+  exampleTokens: Segment[] | null
+  thaiTokens: Segment[] | null
+  noteTokens: Segment[] | null
 }
 
 interface Props {
@@ -147,11 +154,10 @@ function Summary({
       )}
 
       <div className="mt-6 flex gap-3">
+        {/* One way back, now that practice is one screen rather than a tab
+            each for characters and words. */}
         <Link href="/practice" className="rounded-xl border border-edge px-5 py-3 text-sm">
-          Characters
-        </Link>
-        <Link href="/words/practice" className="rounded-xl border border-edge px-5 py-3 text-sm">
-          Words
+          Done
         </Link>
         <button
           onClick={onAgain}
@@ -200,6 +206,8 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   const [session, setSession] = useState(initialSession)
   const [states, setStates] = useState(() => new Map(cards.map((c) => [c.key, c.state])))
   const [revealed, setRevealed] = useState(false)
+  /** The word whose meaning is open, if any. One at a time, across the card. */
+  const [picked, setPicked] = useState<Picked | null>(null)
   const [faceIndex, setFaceIndex] = useState(0)
   // Kept for the summary. Grades are already persisted per card the moment
   // they're given, so this is a display record, not the source of truth.
@@ -350,6 +358,7 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
     }
     setSession(result.session)
     setRevealed(false)
+    setPicked(null)
     setError(null)
 
     // Keep whatever was typed into the mnemonic box. Tapping a grade button
@@ -466,13 +475,27 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
         {/* FRONT — what you're being asked. */}
         {direction === 'recognise' ? (
           <span className="flex flex-col items-center">
-            <span
-              className={`${thaiClass} select-none leading-none ${
-                item.type === 'word' ? (revealed ? 'text-4xl' : 'text-6xl') : revealed ? 'text-7xl' : 'text-[9rem]'
-              }`}
-            >
-              {item.thai}
-            </span>
+            {/* A sentence card asked Thai-first keeps its sentence here after
+                the reveal, so this is where it has to become tappable. Only
+                once revealed: before that this sits inside the card's own
+                reveal button, where a button would be invalid HTML. */}
+            {revealed && card.thaiTokens ? (
+              <TappableThai
+                block="headword"
+                segments={card.thaiTokens}
+                picked={picked}
+                onPick={setPicked}
+                className="thai text-3xl leading-relaxed"
+              />
+            ) : (
+              <span
+                className={`${thaiClass} select-none leading-none ${
+                  item.type === 'word' ? (revealed ? 'text-4xl' : 'text-6xl') : revealed ? 'text-7xl' : 'text-[9rem]'
+                }`}
+              >
+                {item.thai}
+              </span>
+            )}
             {/* The script is still being learned, so a word card shows how it
                 sounds too — otherwise it is unreadable rather than difficult. */}
             {item.type === 'word' && item.ipa ? (
@@ -496,6 +519,13 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
           <span className="mt-10 text-xs uppercase tracking-widest text-muted">tap to reveal</span>
         ) : (
           <div className="mt-8 w-full space-y-5">
+            {/* A word tapped in the sentence above. It belongs here rather
+                than up there: that block is a <span>, and a panel is a <div>,
+                which a span may not contain. */}
+            {direction === 'recognise' && picked?.block === 'headword' ? (
+              <WordPanel key={`${picked.block}:${picked.key}`} picked={picked} />
+            ) : null}
+
             {/* BACK — the answer, then everything that helps it stick. */}
             {direction === 'recognise' ? (
               item.type === 'word' ? (
@@ -508,13 +538,24 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
               )
             ) : (
               <div>
-                <p
-                  className={`${item.type === 'vowel' ? 'thai-vowel' : 'thai'} leading-none ${
-                    item.type === 'word' ? 'text-4xl' : 'text-7xl'
-                  }`}
-                >
-                  {item.thai}
-                </p>
+                {card.thaiTokens ? (
+                  <TappableThai
+                    block="headword"
+                    segments={card.thaiTokens}
+                    picked={picked}
+                    onPick={setPicked}
+                    className="thai text-3xl leading-relaxed"
+                  />
+                ) : (
+                  <p
+                    className={`${item.type === 'vowel' ? 'thai-vowel' : 'thai'} leading-none ${
+                      item.type === 'word' ? 'text-4xl' : 'text-7xl'
+                    }`}
+                  >
+                    {item.thai}
+                  </p>
+                )}
+                {picked?.block === 'headword' ? <WordPanel key={`${picked.block}:${picked.key}`} picked={picked} /> : null}
                 {item.type === 'word' ? (
                   <p className="mt-2 font-mono text-lg text-muted">/{item.ipa}/</p>
                 ) : null}
@@ -527,7 +568,17 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
             {item.type === 'word' && item.word.exampleThai ? (
               <div className="rounded-xl bg-surface px-3 py-3 text-left">
                 <p className="text-[10px] uppercase tracking-widest text-muted">In use</p>
-                <p className="thai mt-2 text-xl leading-relaxed">{item.word.exampleThai}</p>
+                {card.exampleTokens ? (
+                  <TappableThai
+                    block="example"
+                    segments={card.exampleTokens}
+                    picked={picked}
+                    onPick={setPicked}
+                    className="thai mt-2 text-xl leading-relaxed"
+                  />
+                ) : (
+                  <p className="thai mt-2 text-xl leading-relaxed">{item.word.exampleThai}</p>
+                )}
                 {item.word.exampleIpa ? (
                   <p className="mt-1 font-mono text-xs text-muted">/{item.word.exampleIpa}/</p>
                 ) : null}
@@ -540,6 +591,9 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                 >
                   <span aria-hidden>🔊</span> hear the sentence
                 </button>
+                {picked?.block === 'example' ? (
+                  <WordPanel key={`${picked.block}:${picked.key}`} picked={picked} />
+                ) : null}
               </div>
             ) : null}
 
@@ -555,7 +609,18 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
             {item.type === 'word' && item.word.context ? (
               <div className="rounded-xl border border-edge px-3 py-3 text-left">
                 <p className="text-[10px] uppercase tracking-widest text-muted">Good to know</p>
-                <p className="mt-2 text-sm leading-relaxed">{item.word.context}</p>
+                {card.noteTokens ? (
+                  <TappableThai
+                    block="note"
+                    segments={card.noteTokens}
+                    picked={picked}
+                    onPick={setPicked}
+                    className="mt-2 text-sm leading-relaxed"
+                  />
+                ) : (
+                  <p className="mt-2 text-sm leading-relaxed">{item.word.context}</p>
+                )}
+                {picked?.block === 'note' ? <WordPanel key={`${picked.block}:${picked.key}`} picked={picked} /> : null}
               </div>
             ) : null}
 

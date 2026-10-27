@@ -58,7 +58,7 @@ export async function importPaste(
   const added = await addWords(words.map((word) => ({ ...word, pack })))
 
   revalidatePath('/words')
-  revalidatePath('/words/practice')
+  revalidatePath('/practice')
   revalidatePath('/practice')
 
   return {

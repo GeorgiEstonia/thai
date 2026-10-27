@@ -81,7 +81,7 @@ export default function ImportClient({ packs }: { packs: string[] }) {
             </p>
           ) : null}
           <Link
-            href="/words/practice"
+            href="/practice"
             className="mt-3 inline-block rounded-xl border border-edge px-4 py-2 text-sm"
           >
             Practise them

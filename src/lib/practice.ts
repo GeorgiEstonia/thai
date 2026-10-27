@@ -3,11 +3,16 @@ import {
   type Direction,
   PRACTICE_ITEMS,
   type PracticeItem,
+  type WordRecord,
   WORDS_GROUP,
   cardKey,
 } from '@/content/items'
 
+import { GLOSSARY } from '@/content/glossary'
+import { LESSON_SETS } from '@/content/lessons'
+
 import { getDb, schema } from './db'
+import { type Lexicon, type Segment, segmentNote, segmentThai } from './segment'
 import { learnedWords, gateFor } from './unlock'
 import { listWordItems, listWords, loadNotes } from './words'
 import { type SrsState, isDue, isLeech, newState } from './srs'
@@ -52,6 +57,16 @@ export interface DeckCard {
   stage: number
   /** The topic, so a sitting can alternate between topics rather than block. */
   lane: string
+  /**
+   * The example sentence split into words you can tap, or null when it cannot
+   * be split exactly. Null rather than a best guess: Thai has no spaces, and a
+   * partial split finds ขา "leg" inside เขา "he" and says so confidently.
+   */
+  exampleTokens: Segment[] | null
+  /** The same for a card whose headword is itself a sentence. */
+  thaiTokens: Segment[] | null
+  /** Words named in the usage note, which already carries their readings. */
+  noteTokens: Segment[] | null
 }
 
 export function parseSelection(params: {
@@ -135,15 +150,15 @@ export async function loadProgress(): Promise<Map<string, SrsState>> {
  * the chosen half of the deck (words or phrases), and — for phrases — whether
  * the words inside it have been learned yet.
  */
-async function applyVocabRules(
+function applyVocabRules(
   items: PracticeItem[],
   selection: Selection,
   progress: Map<string, SrsState>,
-): Promise<PracticeItem[]> {
+  vocabulary: WordRecord[],
+): PracticeItem[] {
   const hasVocab = items.some((item) => item.type === 'word')
   if (!hasVocab) return items
 
-  const vocabulary = await listWords()
   const learned = learnedWords(vocabulary, progress)
 
   return items.filter((item) => {
@@ -154,6 +169,49 @@ async function applyVocabRules(
   })
 }
 
+/**
+ * Everything a sentence might be split into, with what each word means.
+ *
+ * Three layers, in this order:
+ *
+ *  1. Your own cards, so tapping a word you have a card for says what your
+ *     card says rather than offering a second opinion.
+ *  2. The vocabulary that ships with the app.
+ *  3. The shipped glossary — the particles, pronouns and place names that
+ *     hold sentences together without ever having been worth a card.
+ *
+ * Two and three matter because they ship. Built from the database alone, a
+ * deleted card would quietly stop a sentence being readable — and it would
+ * stop being readable for every other word that shares it, with nothing on
+ * screen to say why. The shipped layers alone can split every example the app
+ * carries, so the deck can only improve the wording, never break the split.
+ */
+export function buildLexicon(vocabulary: WordRecord[]): Lexicon {
+  const lexicon: Lexicon = new Map()
+
+  for (const word of vocabulary) {
+    if (word.kind !== 'word') continue
+    const thai = word.thai.trim()
+    if (!thai || lexicon.has(thai)) continue
+    lexicon.set(thai, { ipa: word.ipa ?? '', english: word.english })
+  }
+
+  for (const set of LESSON_SETS) {
+    for (const item of set.items) {
+      if ((item.kind ?? 'word') !== 'word') continue
+      const thai = item.thai.trim()
+      if (!thai || lexicon.has(thai)) continue
+      lexicon.set(thai, { ipa: item.ipa ?? '', english: item.english })
+    }
+  }
+
+  for (const [thai, entry] of Object.entries(GLOSSARY)) {
+    if (!lexicon.has(thai)) lexicon.set(thai, entry)
+  }
+
+  return lexicon
+}
+
 /** Every card (item × direction) implied by a selection, with its schedule. */
 export async function loadDeck(selection: Selection, now: Date): Promise<DeckCard[]> {
   const [progress, allItems, notes] = await Promise.all([
@@ -162,7 +220,12 @@ export async function loadDeck(selection: Selection, now: Date): Promise<DeckCar
     loadNotes(),
   ])
 
-  const items = await applyVocabRules(allItems, selection, progress)
+  const vocabulary = allItems.some((item) => item.type === 'word') ? await listWords() : []
+  const items = applyVocabRules(allItems, selection, progress, vocabulary)
+
+  // Built once for the whole deck rather than per card: it is the same map
+  // every time, and a session can run to several hundred cards.
+  const lexicon = buildLexicon(vocabulary)
 
   return items.flatMap((item) =>
     selection.directions.map((direction): DeckCard => {
@@ -175,6 +238,18 @@ export async function loadDeck(selection: Selection, now: Date): Promise<DeckCar
         note: notes.get(`${item.type}:${item.id}`) ?? null,
         stage: item.type === 'word' && item.word.kind === 'phrase' ? SENTENCE_STAGE : WORD_STAGE,
         lane: item.group,
+        exampleTokens:
+          item.type === 'word' && item.word.exampleThai
+            ? segmentThai(item.word.exampleThai, lexicon)
+            : null,
+        thaiTokens:
+          item.type === 'word' && item.word.kind === 'phrase'
+            ? segmentThai(item.word.thai, lexicon)
+            : null,
+        noteTokens:
+          item.type === 'word' && item.word.context
+            ? segmentNote(item.word.context, lexicon)
+            : null,
       }
     }),
   )

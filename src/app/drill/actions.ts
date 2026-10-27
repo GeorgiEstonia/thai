@@ -75,14 +75,14 @@ export async function editDrillWord(
   await requireAuth()
   await updateWord(id, patch)
   revalidatePath('/words')
-  revalidatePath('/words/practice')
+  revalidatePath('/practice')
 }
 
 export async function removeDrillWord(id: string): Promise<void> {
   await requireAuth()
   await deleteWord(id)
   revalidatePath('/words')
-  revalidatePath('/words/practice')
+  revalidatePath('/practice')
 }
 
 /** Sets how often a word comes round: 1 more, -1 less, 0 the normal schedule. */
@@ -90,5 +90,49 @@ export async function prioritiseWord(id: string, priority: number): Promise<void
   await requireAuth()
   await setWordPriority(id, priority)
   revalidatePath('/words')
-  revalidatePath('/words/practice')
+  revalidatePath('/practice')
+}
+
+/**
+ * Other sentences in your deck that use this word.
+ *
+ * Seeing a word in a second and third place is what turns a gloss into a
+ * sense of range — ได้ meaning "can" after a verb and "managed to" before one
+ * is not something a one-line meaning can carry.
+ *
+ * Matched by substring, which is safe here in a way it is not when splitting
+ * a sentence: the worst case is listing a sentence that merely contains these
+ * letters, and the sentence is shown in full for you to judge. Nothing is
+ * being asserted about what it means.
+ */
+export async function alsoIn(
+  thai: string,
+): Promise<{ thai: string; english: string }[]> {
+  await requireAuth()
+
+  const needle = thai.trim()
+  if (needle.length < 2) return []
+
+  const words = await listWords()
+  const seen = new Set<string>()
+  const out: { thai: string; english: string }[] = []
+
+  for (const word of words) {
+    // The word's own card is not somewhere it "also" appears.
+    if (word.thai.trim() === needle) continue
+
+    const sentence =
+      word.kind === 'phrase' && word.thai.includes(needle)
+        ? { thai: word.thai, english: word.english }
+        : word.exampleThai?.includes(needle)
+          ? { thai: word.exampleThai, english: word.exampleEnglish ?? '' }
+          : null
+
+    if (!sentence || seen.has(sentence.thai)) continue
+    seen.add(sentence.thai)
+    out.push(sentence)
+    if (out.length === 4) break
+  }
+
+  return out
 }

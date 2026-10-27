@@ -51,7 +51,18 @@ export default async function DrillPage({
 
   return (
     <DrillClient
-      cards={deck.map(({ key, item, direction, state, note }) => ({ key, item, direction, state, note }))}
+      cards={deck.map(
+        ({ key, item, direction, state, note, exampleTokens, thaiTokens, noteTokens }) => ({
+          key,
+          item,
+          direction,
+          state,
+          note,
+          exampleTokens,
+          thaiTokens,
+          noteTokens,
+        }),
+      )}
       session={session}
     />
   )
