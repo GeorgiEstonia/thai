@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { isAuthenticated } from '@/lib/auth'
-import { applyResort, resortPending } from '@/lib/resort'
+import { applyRefile, refilePending } from '@/lib/refile'
 import { applyRetopic, retopicPending } from '@/lib/retopic'
 import { applyRevisions, revisionsPending } from '@/lib/revise'
 import { applyPendingSeeds, pendingSeeds } from '@/lib/seed'
@@ -27,9 +27,9 @@ export async function POST() {
     const revised = await applyRevisions()
     // After the seeds, so vocabulary filed a moment ago is renamed too.
     const retopiced = await applyRetopic()
-    // After the rename, which is what leaves the mixtures behind to re-file.
-    const resorted = await applyResort()
-    return NextResponse.json({ ...applied, revised, retopiced, resorted })
+    // After the rename: this is the hand-written filing, which supersedes it.
+    const refiled = await applyRefile()
+    return NextResponse.json({ ...applied, revised, retopiced, refiled })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message.slice(0, 200) : 'failed' },
@@ -42,16 +42,16 @@ export async function POST() {
 export async function GET() {
   if (!(await isAuthenticated())) return NextResponse.json({ error: 'auth' }, { status: 401 })
 
-  const [pending, revisions, retopic, resort] = await Promise.all([
+  const [pending, revisions, retopic, refile] = await Promise.all([
     pendingSeeds(),
     revisionsPending(),
     retopicPending(),
-    resortPending(),
+    refilePending(),
   ])
   return NextResponse.json({
     pending: pending.map((set) => ({ id: set.id, pack: set.pack, items: set.items.length })),
     revisions,
     retopic,
-    resort,
+    refile,
   })
 }

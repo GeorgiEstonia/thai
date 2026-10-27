@@ -25,7 +25,7 @@ export default function SeedRunner() {
   const [applied, setApplied] = useState<Applied[] | null>(null)
   const [revised, setRevised] = useState<Revised | null>(null)
   const [retopiced, setRetopiced] = useState<{ renamed: number } | null>(null)
-  const [resorted, setResorted] = useState<{ moved: number } | null>(null)
+  const [refiled, setRefiled] = useState<{ moved: number } | null>(null)
   const [pending, setPending] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
   const started = useRef(false)
@@ -38,15 +38,15 @@ export default function SeedRunner() {
       try {
         const look = await fetch('/api/seed')
         if (!look.ok) return
-        const { pending: waiting, revisions, retopic, resort } = (await look.json()) as {
+        const { pending: waiting, revisions, retopic, refile } = (await look.json()) as {
           pending: { items: number }[]
           revisions: boolean
           retopic: boolean
-          resort: boolean
+          refile: boolean
         }
         // Either there is new vocabulary to file, or there are examples and
         // classifiers waiting to be written onto what is already here.
-        if (waiting.length === 0 && !revisions && !retopic && !resort) return
+        if (waiting.length === 0 && !revisions && !retopic && !refile) return
 
         setPending(waiting.reduce((sum, set) => sum + set.items, 0))
 
@@ -59,12 +59,12 @@ export default function SeedRunner() {
           applied: Applied[]
           revised: Revised
           retopiced: { renamed: number }
-          resorted: { moved: number }
+          refiled: { moved: number }
         }
         setApplied(result.applied)
         setRevised(result.revised)
         setRetopiced(result.retopiced)
-        setResorted(result.resorted)
+        setRefiled(result.refiled)
       } catch {
         setFailed(true)
       }
@@ -91,7 +91,7 @@ export default function SeedRunner() {
   const added = applied.reduce((sum, set) => sum + set.added, 0)
   const updated = revised?.updated ?? 0
   const renamed = retopiced?.renamed ?? 0
-  const moved = resorted?.moved ?? 0
+  const moved = refiled?.moved ?? 0
   if (added === 0 && updated === 0 && renamed === 0 && moved === 0) return null
 
   return (
