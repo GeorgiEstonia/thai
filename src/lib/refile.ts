@@ -17,7 +17,9 @@ import { listWords } from './words'
  * assignment is decided once, by hand, and applied for nothing.
  */
 
-export const REFILE_ID = 'refile-v1'
+// v2: lesson 10 added fifty-seven words and thirty-one sentences, which need
+// filing against the same written assignment.
+export const REFILE_ID = 'refile-v2'
 
 const CORE: Topic = 'Core words and particles'
 

@@ -429,4 +429,26 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   สีแดง: { ipa: 'sǐː dɛːŋ', english: 'red' },
   หมายเลข: { ipa: 'mǎːj.lêːk', english: 'number' },
   สู้ๆ: { ipa: 'sûː sûː', english: 'keep going, you can do it' },
+
+  // ── Added with Lesson 10 ──────────────────────────────────────────────────
+  สูง: { ipa: 'sǔːŋ', english: 'tall, high' },
+  และ: { ipa: 'lɛ́ʔ', english: 'and — joining two statements' },
+  ล่ะ: { ipa: 'lâ', english: 'turns a statement back: "and you?"' },
+  เหรอ: { ipa: 'rɤ̌ː', english: 'really? — a surprised question' },
+  พร้อม: { ipa: 'prɔ́ːm', english: 'ready' },
+  ทอด: { ipa: 'tʰɔ̂ːt', english: 'to deep-fry' },
+  ไก่ทอด: { ipa: 'kàj tʰɔ̂ːt', english: 'fried chicken' },
+  หมู: { ipa: 'mǔː', english: 'pork, pig' },
+  หมูย่าง: { ipa: 'mǔː jâːŋ', english: 'grilled pork' },
+  ทอง: { ipa: 'tʰɔːŋ', english: 'gold' },
+  แทน: { ipa: 'tʰɛːn', english: 'tan, brown (of skin); to replace' },
+  ซอย: { ipa: 'sɔːj', english: 'lane, side street' },
+  รั่ว: { ipa: 'rûa', english: 'to leak' },
+  รอบ: { ipa: 'rɔ̂ːp', english: 'around' },
+  ระวัง: { ipa: 'ra.waŋ', english: 'to beware, take care' },
+  // Names that turn up in the lesson dialogues
+  แอน: { ipa: 'ɛːn', english: 'Anne' },
+  เจน: { ipa: 'tɕeːn', english: 'Jane' },
+  มาลี: { ipa: 'maː.liː', english: 'Malee — a Thai name' },
+  แกร็บ: { ipa: 'krɛ́p', english: 'Grab — the ride-hailing app' },
 }

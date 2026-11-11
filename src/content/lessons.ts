@@ -2616,6 +2616,628 @@ export const LESSON_SETS: LessonSet[] = [
           }
     ],
   },
+  {
+    id: 'lesson-10-describing-people',
+    pack: "Family and people",
+    items: [
+          {
+                "thai": "หน้าตา",
+                "ipa": "nâa-taa",
+                "english": "appearance, looks",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "สั้น",
+                "ipa": "sân",
+                "english": "short (in length)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ยาว",
+                "ipa": "yaaw",
+                "english": "long",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "อ้วน",
+                "ipa": "ʔûan",
+                "english": "fat",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ผอม",
+                "ipa": "phɔ̌ɔm",
+                "english": "thin, skinny",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เตี้ย",
+                "ipa": "tîa",
+                "english": "short (in height)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "สวย",
+                "ipa": "sǔay",
+                "english": "beautiful (of a woman)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "หล่อ",
+                "ipa": "lɔ̀ɔ",
+                "english": "handsome (of a man)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "น่ารัก",
+                "ipa": "nâa-rák",
+                "english": "cute, lovely",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "หนวด",
+                "ipa": "nùat",
+                "english": "moustache",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เครา",
+                "ipa": "krao",
+                "english": "beard",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "แว่น",
+                "ipa": "wɛ̌ɛn",
+                "english": "glasses",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ใส่แว่น",
+                "ipa": "sài wɛ̌ɛn",
+                "english": "to wear glasses",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ผิว",
+                "ipa": "phǐw",
+                "english": "skin",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ขยัน",
+                "ipa": "khà-yǎn",
+                "english": "hardworking",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ขี้อาย",
+                "ipa": "khîi-ʔaay",
+                "english": "shy",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ขี้เหนียว",
+                "ipa": "khîi-nǐaw",
+                "english": "stingy",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ร่าเริง",
+                "ipa": "râa-rəəŋ",
+                "english": "cheerful",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ใจดำ",
+                "ipa": "cai-dam",
+                "english": "unkind, mean",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ใจเย็น",
+                "ipa": "cai-yen",
+                "english": "calm, patient",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เก่ง",
+                "ipa": "kèŋ",
+                "english": "skilful, good at something",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ฉลาด",
+                "ipa": "chà-làat",
+                "english": "smart, clever",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "นิสัย",
+                "ipa": "ní-sǎi",
+                "english": "character, personality",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ดุ",
+                "ipa": "dù",
+                "english": "fierce, unfriendly",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "กว่า",
+                "ipa": "kwàa",
+                "english": "more … than",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ที่สุด",
+                "ipa": "thîi-sùt",
+                "english": "the most …; extremely",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เกินไป",
+                "ipa": "kəən-pai",
+                "english": "too much, excessively",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "แก่",
+                "ipa": "kɛ̀ɛ",
+                "english": "old (of a person)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เก่า",
+                "ipa": "kàw",
+                "english": "old (of a thing)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ใหม่",
+                "ipa": "màj",
+                "english": "new",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ไม่ดี",
+                "ipa": "mâi-dii",
+                "english": "bad, no good",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ง่าย",
+                "ipa": "ŋâay",
+                "english": "easy",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ยาก",
+                "ipa": "yâak",
+                "english": "difficult",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เร็ว",
+                "ipa": "rew",
+                "english": "fast",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ช้า",
+                "ipa": "cháa",
+                "english": "slow",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "หนัก",
+                "ipa": "nàk",
+                "english": "heavy",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เบา",
+                "ipa": "bao",
+                "english": "light (in weight)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "สะอาด",
+                "ipa": "sà-ʔàat",
+                "english": "clean",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "สกปรก",
+                "ipa": "sòk-kà-pròk",
+                "english": "dirty",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "กว้าง",
+                "ipa": "kwâaŋ",
+                "english": "wide",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "แคบ",
+                "ipa": "khɛ̂ɛp",
+                "english": "narrow",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "น้อย",
+                "ipa": "nɔ́ɔy",
+                "english": "few, a little",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "อิ่ม",
+                "ipa": "ʔìm",
+                "english": "full (from eating)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "หิว",
+                "ipa": "hǐw",
+                "english": "hungry",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "รู้จัก",
+                "ipa": "rúu-càk",
+                "english": "to know (a person or place)",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เป็นคนยังไง",
+                "ipa": "pen khon yaŋ-ŋai",
+                "english": "what sort of person … is",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เดี๋ยว",
+                "ipa": "dǐaw",
+                "english": "in a moment, shortly",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เรียก",
+                "ipa": "rîak",
+                "english": "to call, to summon",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "เรื่อง",
+                "ipa": "rɯ̂aŋ",
+                "english": "story, matter; classifier for films and stories",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "จบ",
+                "ipa": "còp",
+                "english": "to end, to finish",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ขน",
+                "ipa": "khǒn",
+                "english": "fur, body hair",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "หาง",
+                "ipa": "hǎaŋ",
+                "english": "tail",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ปลอกคอ",
+                "ipa": "plɔ̀ɔk-khɔɔ",
+                "english": "collar",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "สร้อยคอ",
+                "ipa": "sɔ̂y-khɔɔ",
+                "english": "necklace",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "หลังคา",
+                "ipa": "lǎŋ-khaa",
+                "english": "roof",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "กำแพง",
+                "ipa": "kam-phɛɛŋ",
+                "english": "wall",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "ถังขยะ",
+                "ipa": "thǎŋ-khà-yà",
+                "english": "bin, rubbish bin",
+                "kind": "word",
+                "notes": null
+          },
+          {
+                "thai": "คุณรู้จักจิมไหม",
+                "ipa": "khun rúu-càk Jim mái",
+                "english": "Do you know Jim?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "รู้จักครับ",
+                "ipa": "rúu-càk khráp",
+                "english": "Yes, I know him.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ไม่รู้จัก",
+                "ipa": "mâi rúu-càk",
+                "english": "No, I don't know him.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาหน้าตาเป็นยังไง",
+                "ipa": "kháo nâa-taa pen-yaŋ-ŋai",
+                "english": "What does he look like?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาผมสั้น",
+                "ipa": "kháo phǒm sân",
+                "english": "He has short hair.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาผมยาว",
+                "ipa": "kháo phǒm yaaw",
+                "english": "He has long hair.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาตาสีดำ",
+                "ipa": "kháo taa sǐi-dam",
+                "english": "He has dark eyes.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาผมสั้นและตาสีฟ้า",
+                "ipa": "kháo phǒm sân lé taa sǐi-fáa",
+                "english": "He has short hair and blue eyes.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาหล่อไหม",
+                "ipa": "kháo lɔ̀ɔ mái",
+                "english": "Is he handsome?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาสวยไหม",
+                "ipa": "kháo sǔay mái",
+                "english": "Is she beautiful?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาสูงไหม",
+                "ipa": "kháo sǔuŋ mái",
+                "english": "Is he tall?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขามีหนวดไหม",
+                "ipa": "kháo mii nùat mái",
+                "english": "Does he have a moustache?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาใส่แว่นไหม",
+                "ipa": "kháo sài wɛ̌ɛn mái",
+                "english": "Does he wear glasses?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาเป็นคนยังไง",
+                "ipa": "kháo pen khon yaŋ-ŋai",
+                "english": "What is he like?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาใจดีมาก",
+                "ipa": "kháo cai-dii mâak",
+                "english": "He is very kind.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาร่าเริงมาก",
+                "ipa": "kháo râa-rəəŋ mâak",
+                "english": "He is very cheerful.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาขี้เกียจมาก",
+                "ipa": "kháo khîi-kìat mâak",
+                "english": "He is very lazy.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาสูงกว่าผม",
+                "ipa": "kháo sǔuŋ kwàa phǒm",
+                "english": "She is taller than me.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ผมหล่อกว่าเขา",
+                "ipa": "phǒm lɔ̀ɔ kwàa kháo",
+                "english": "I am more handsome than him.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ผมขยันกว่าเขา",
+                "ipa": "phǒm khà-yǎn kwàa kháo",
+                "english": "I am more hardworking than him.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาสูงที่สุด",
+                "ipa": "kháo sǔuŋ thîi-sùt",
+                "english": "He is the tallest.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ผมหล่อที่สุด",
+                "ipa": "phǒm lɔ̀ɔ thîi-sùt",
+                "english": "I am the most handsome.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ฉันสวยที่สุด",
+                "ipa": "chǎn sǔay thîi-sùt",
+                "english": "I am the most beautiful.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ฉันขยันที่สุด",
+                "ipa": "chǎn khà-yǎn thîi-sùt",
+                "english": "I am the most hardworking.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เขาใจดีและขยันที่สุด",
+                "ipa": "kháo cai-dii lé khà-yǎn thîi-sùt",
+                "english": "He is kind and extremely hardworking.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "แอนสวยกว่าเจน",
+                "ipa": "Anne sǔay kwàa Jane",
+                "english": "Anne is more beautiful than Jane.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "แอนสวยที่สุด",
+                "ipa": "Anne sǔay thîi-sùt",
+                "english": "Anne is the most beautiful.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ไก่ทอดอร่อยกว่าหมูย่าง",
+                "ipa": "kài-thɔ̂ɔt ʔa-rɔ̀y kwàa mǔu-yâaŋ",
+                "english": "Fried chicken is more delicious than grilled pork.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "ไก่ทอดอร่อยที่สุด",
+                "ipa": "kài-thɔ̂ɔt ʔa-rɔ̀y thîi-sùt",
+                "english": "Fried chicken is extremely delicious.",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "แล้วคุณล่ะ",
+                "ipa": "lɛ́ɛw khun lâ",
+                "english": "And you?",
+                "kind": "phrase",
+                "notes": null
+          },
+          {
+                "thai": "เดี๋ยวก่อน",
+                "ipa": "dǐaw kɔ̀ɔn",
+                "english": "Wait a minute.",
+                "kind": "phrase",
+                "notes": null
+          }
+    ],
+  },
 ]
 
-export const LESSON_ITEM_COUNT = 364
+export const LESSON_ITEM_COUNT = 452
