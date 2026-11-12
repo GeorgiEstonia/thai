@@ -1437,7 +1437,7 @@ export const LESSON_SETS: LessonSet[] = [
           {
                 "thai": "ผม",
                 "ipa": "phǒm",
-                "english": "hair",
+                "english": "hair; also I, me (male speaker)",
                 "kind": "word",
                 "notes": null
           },

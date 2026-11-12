@@ -23,6 +23,15 @@ export interface Revision {
   thai: string
   /** Defaults to 'word'. Set for sentences, which are matched separately. */
   kind?: 'word' | 'phrase'
+  /**
+   * A corrected meaning, where the one the deck was seeded with is wrong.
+   *
+   * Set only where it has to be. The meaning is also what the card is asking
+   * for, so overwriting it changes the question, not just the wording — and
+   * it is the only way to correct a hosted deck, which cannot be written to
+   * from outside the app.
+   */
+  english?: string
   exampleThai: string
   exampleIpa: string
   exampleEnglish: string
@@ -33,7 +42,7 @@ export interface Revision {
 }
 
 /** Bumped when this set is rewritten, so the app applies it again. */
-export const REVISION_ID = 'revisions-v2'
+export const REVISION_ID = 'revisions-v3'
 
 export const REVISIONS: Revision[] = [
   // ── Health, the body and symptoms ─────────────────────────────────────────
@@ -426,7 +435,7 @@ export const REVISIONS: Revision[] = [
   { thai: 'อเมริกา', exampleThai: 'เขามาจากอเมริกา', exampleIpa: 'kʰǎw maː tɕàːk a.meː.ri.kaː', exampleEnglish: 'He comes from America', context: 'An American person is คนอเมริกัน /kʰon a.meː.ri.kan/ — the country ends /kaː/, the person /kan/.' },
 
   // ── Pronouns, particles and the small words that hold Thai together ──────
-  { thai: 'ผม', exampleThai: 'ผมชื่อจอร์จีครับ', exampleIpa: 'pʰǒm tɕʰɯ̂ː tɕɔː.tɕîː kʰráp', exampleEnglish: 'My name is Georgi', context: 'Male "I", polite and standard. Also the word for "hair" — ตัดผม /tàt pʰǒm/ is a haircut, not self-harm.' },
+  { thai: 'ผม', english: 'hair; also I, me (male speaker)', exampleThai: 'ผมชื่อจอร์จีครับ', exampleIpa: 'pʰǒm tɕʰɯ̂ː tɕɔː.tɕîː kʰráp', exampleEnglish: 'My name is Georgi', context: 'Male "I", polite and standard. Also the word for "hair" — ตัดผม /tàt pʰǒm/ is a haircut, not self-harm.' },
   { thai: 'ฉัน', exampleThai: 'ฉันไม่เข้าใจค่ะ', exampleIpa: 'tɕʰǎn mâj kʰâw tɕaj kʰâ', exampleEnglish: 'I do not understand', context: 'Female "I". A man using it sounds either poetic or feminine — stick to ผม /pʰǒm/.' },
   { thai: 'คุณ', exampleThai: 'คุณมาจากไหนครับ', exampleIpa: 'kʰun maː tɕàːk nǎj kʰráp', exampleEnglish: 'Where are you from?', context: 'Polite "you", and also a title before a name — คุณสมชาย /kʰun sǒm.tɕʰaːj/. Thais often use a name or kin term instead of a pronoun.' },
   { thai: 'ครับ', exampleThai: 'สวัสดีครับ ผมชื่อจอร์จีครับ', exampleIpa: 'sa.wàt.diː kʰráp pʰǒm tɕʰɯ̂ː tɕɔː.tɕîː kʰráp', exampleEnglish: 'Hello, my name is Georgi', context: 'The male politeness particle, on statements and questions alike. Use it generously — leaving it off sounds abrupt. Women say ค่ะ /kʰâ/ or คะ /kʰá/.' },

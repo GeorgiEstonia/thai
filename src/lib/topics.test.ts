@@ -93,15 +93,16 @@ describe('topicsFor', () => {
   })
 
   /**
-   * A sentence you could not read is not waiting for you, it is waiting for
-   * its words. Counting it would advertise a session that cannot happen.
+   * A sentence you could mostly not read is not waiting for you, it is
+   * waiting for its words. One new word in it is the point; two out of three
+   * is a vocabulary test. Counting it would advertise a session that cannot
+   * happen.
    */
-  it('ignores a sentence whose words are still unknown', () => {
+  it('ignores a sentence most of whose words are still unknown', () => {
     const deck = [
       word('1', 'ซ้าย', 'Directions'),
       word('2', 'ขวา', 'Directions'),
-      word('3', 'เลี้ยว', 'Directions'),
-      word('p', 'เลี้ยวซ้ายแล้วขวา', 'Directions', { kind: 'phrase' }),
+      word('p', 'ซ้ายหรือขวา', 'Directions', { kind: 'phrase' }),
     ]
     const [topic] = topicsFor(deck, new Map(), NOW)
     expect(topic.totalPhrases).toBe(1)
@@ -112,10 +113,9 @@ describe('topicsFor', () => {
     const deck = [
       word('1', 'ซ้าย', 'Directions'),
       word('2', 'ขวา', 'Directions'),
-      word('3', 'เลี้ยว', 'Directions'),
-      word('p', 'เลี้ยวซ้ายแล้วขวา', 'Directions', { kind: 'phrase' }),
+      word('p', 'ซ้ายหรือขวา', 'Directions', { kind: 'phrase' }),
     ]
-    const progress = new Map([...scheduled('1', due()), ...scheduled('2', due()), ...scheduled('3', due())])
+    const progress = new Map([...scheduled('1', due()), ...scheduled('2', due())])
     const [topic] = topicsFor(deck, progress, NOW)
     expect(topic.phrasesWaiting).toBe(2)
   })

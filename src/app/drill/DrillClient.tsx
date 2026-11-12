@@ -49,6 +49,8 @@ export interface DrillCard {
   exampleTokens: Segment[] | null
   thaiTokens: Segment[] | null
   noteTokens: Segment[] | null
+  /** Words in this sentence not studied yet, with meanings. See NewWords. */
+  newWords: { thai: string; ipa: string; english: string }[]
 }
 
 interface Props {
@@ -73,6 +75,40 @@ const CLASS_STYLES = {
   high: { label: 'high class', text: 'text-class-high', border: 'border-class-high' },
   low: { label: 'low class', text: 'text-class-low', border: 'border-class-low' },
 } as const
+
+/**
+ * The words in this sentence you have not studied yet.
+ *
+ * A sentence used to wait until you knew all of it, then all but one of it.
+ * Both were treating a flashcard like a page of unassisted prose, where the
+ * known-word thresholds are genuinely high. This card carries its own
+ * translation, its own romanisation and a gloss behind every word, which is
+ * the assisted condition — and a word first met inside a sentence that means
+ * something is remembered better than the same word drilled on its own.
+ *
+ * So the sentence comes early and names its new words instead. Plain text,
+ * not buttons: before the reveal this sits inside the card's own reveal
+ * button, where a nested button is the hydration bug from commit 53d9b9b.
+ * The words are tappable in the sentence itself once revealed.
+ */
+function NewWords({ words }: { words: { thai: string; ipa: string; english: string }[] }) {
+  if (words.length === 0) return null
+
+  return (
+    <span className="mt-5 block w-full rounded-xl border border-class-mid/40 px-3 py-2 text-left">
+      <span className="block text-[0.65rem] uppercase tracking-widest text-muted">
+        {words.length === 1 ? 'new word here' : 'new words here'}
+      </span>
+      {words.map((word) => (
+        <span key={word.thai} className="mt-1 block text-sm leading-snug">
+          <span className="thai text-base">{word.thai}</span>
+          {word.ipa ? <span className="ml-2 font-mono text-muted">/{word.ipa}/</span> : null}
+          <span className="ml-2 text-muted">{word.english}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
 
 /**
  * What happened this session.
@@ -416,6 +452,8 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
   const directionLabel =
     item.type === 'word' ? WORD_DIRECTION_LABELS[direction] : DIRECTION_LABELS[direction]
   const hint = direction === 'produce' ? produceHint(item) : null
+  // Marked solid in the sentence rather than left to be discovered.
+  const newHere = new Set(card.newWords.map((word) => word.thai))
 
   return (
     <main className="flex-1 flex flex-col min-h-0 px-5 pb-6 pt-4 max-w-md w-full mx-auto">
@@ -485,6 +523,7 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                 segments={card.thaiTokens}
                 picked={picked}
                 onPick={setPicked}
+                highlight={newHere}
                 className="thai text-3xl leading-relaxed"
               />
             ) : (
@@ -501,6 +540,10 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
             {item.type === 'word' && item.ipa ? (
               <span className="mt-3 font-mono text-lg text-muted">/{item.ipa}/</span>
             ) : null}
+            {/* Named before the reveal, not after: the point is to read the
+                sentence with the help, not to be told afterwards which word
+                you had no way of knowing. */}
+            <NewWords words={card.newWords} />
           </span>
         ) : item.type === 'word' ? (
           <span className="px-4 text-3xl leading-snug">{item.word.english}</span>
@@ -544,6 +587,7 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                     segments={card.thaiTokens}
                     picked={picked}
                     onPick={setPicked}
+                    highlight={newHere}
                     className="thai text-3xl leading-relaxed"
                   />
                 ) : (
@@ -559,6 +603,9 @@ export default function DrillClient({ cards, session: initialSession }: Props) {
                 {item.type === 'word' ? (
                   <p className="mt-2 font-mono text-lg text-muted">/{item.ipa}/</p>
                 ) : null}
+                {/* Asked the other way round, the new words are part of the
+                    answer, so they wait until it has been given. */}
+                <NewWords words={card.newWords} />
               </div>
             )}
 

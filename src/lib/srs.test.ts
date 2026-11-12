@@ -676,6 +676,88 @@ describe('buildSession interleaving', () => {
     expect(lanes.filter((l) => l === 'b')).toHaveLength(3)
   })
 
+  /**
+   * The other half of opening the phrase gate. A sentence can now arrive
+   * carrying two or three words never studied, so the sitting has to limit
+   * how many of them turn up at once — and spread what it keeps across the
+   * day's topics rather than taking them all from the first.
+   */
+  describe('the per-stage cap on new material', () => {
+    it('limits new cards in a stage across all topics', () => {
+      const items = [
+        ...Array.from({ length: 10 }, (_, i) => ({
+          id: `a-${i}`,
+          state: unseen,
+          lane: 'a',
+          stage: 1,
+        })),
+        ...Array.from({ length: 10 }, (_, i) => ({
+          id: `b-${i}`,
+          state: unseen,
+          lane: 'b',
+          stage: 1,
+        })),
+      ]
+      const session = buildSession(items, now, {
+        maxNew: Number.POSITIVE_INFINITY,
+        maxNewPerStage: { 1: 6 },
+      })
+      expect(session.queue).toHaveLength(6)
+    })
+
+    it('spreads what it keeps across the topics', () => {
+      const items = [
+        ...Array.from({ length: 10 }, (_, i) => ({
+          id: `a-${i}`,
+          state: unseen,
+          lane: 'a',
+          stage: 1,
+        })),
+        ...Array.from({ length: 10 }, (_, i) => ({
+          id: `b-${i}`,
+          state: unseen,
+          lane: 'b',
+          stage: 1,
+        })),
+      ]
+      const lanes = lanesOf(
+        buildSession(items, now, {
+          maxNew: Number.POSITIVE_INFINITY,
+          maxNewPerStage: { 1: 6 },
+          blockSize: 6,
+        }).queue.map((e) => e.id),
+      )
+      expect(lanes.filter((l) => l === 'a')).toHaveLength(3)
+      expect(lanes.filter((l) => l === 'b')).toHaveLength(3)
+    })
+
+    it('leaves the other stages alone', () => {
+      const items = [
+        ...Array.from({ length: 10 }, (_, i) => ({ id: `a-${i}`, state: unseen, lane: 'a', stage: 0 })),
+        ...Array.from({ length: 10 }, (_, i) => ({ id: `b-${i}`, state: unseen, lane: 'b', stage: 1 })),
+      ]
+      const session = buildSession(items, now, {
+        maxNew: Number.POSITIVE_INFINITY,
+        maxNewPerStage: { 1: 4 },
+      })
+      expect(session.queue).toHaveLength(14)
+    })
+
+    it('never caps revision, which is work already owed', () => {
+      const items = Array.from({ length: 10 }, (_, i) => ({
+        id: `a-${i}`,
+        state: seen,
+        lane: 'a',
+        stage: 1,
+      }))
+      const session = buildSession(items, now, {
+        maxNew: Number.POSITIVE_INFINITY,
+        maxNewPerStage: { 1: 2 },
+      })
+      expect(session.queue).toHaveLength(10)
+    })
+  })
+
   it('still puts words ahead of sentences across topics', () => {
     const items = [
       { id: 'a-w', state: seen, lane: 'a', stage: 0 },

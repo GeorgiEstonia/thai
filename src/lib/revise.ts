@@ -42,6 +42,7 @@ export async function revisionsPending(): Promise<boolean> {
 
 function fieldsOf(revision: Revision) {
   return {
+    ...(revision.english ? { english: revision.english.trim() } : {}),
     exampleThai: revision.exampleThai.trim(),
     exampleIpa: revision.exampleIpa.trim(),
     exampleEnglish: revision.exampleEnglish.trim(),

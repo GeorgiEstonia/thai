@@ -45,6 +45,9 @@ afterAll(async () => {
 /** A word the revision set actually covers, so the test tracks the real content. */
 const covered = REVISIONS.find((entry) => (entry.kind ?? 'word') === 'word')!
 
+/** A revision that corrects the meaning, not just the example around it. */
+const corrected = REVISIONS.find((entry) => entry.english)!
+
 describe('applyRevisions', () => {
   it('fills in the example, the note and the classifier', async () => {
     await addWords([
@@ -58,6 +61,33 @@ describe('applyRevisions', () => {
     expect(word.exampleThai).toBe(covered.exampleThai)
     expect(word.exampleIpa).toBe(covered.exampleIpa)
     expect(word.exampleEnglish).toBe(covered.exampleEnglish)
+  })
+
+  /**
+   * The hosted deck cannot be written to from outside the app, so a meaning
+   * that was seeded wrong — ผม /pʰǒm/ shipped as "hair" alone, which is how
+   * the commonest word for "I" came to be glossed as hair on every sentence
+   * card carrying it — can only be corrected this way.
+   */
+  it('corrects a meaning where the revision gives one', async () => {
+    await addWords([
+      { thai: corrected.thai, ipa: '', english: 'wrong meaning', source: 'manual' },
+    ])
+    await applyRevisions()
+
+    const [word] = await listWords()
+    expect(word.english).toBe(corrected.english)
+  })
+
+  it('leaves the meaning alone where the revision does not give one', async () => {
+    const untouched = REVISIONS.find(
+      (entry) => !entry.english && (entry.kind ?? 'word') === 'word',
+    )!
+    await addWords([{ thai: untouched.thai, ipa: '', english: 'mine', source: 'manual' }])
+    await applyRevisions()
+
+    const [word] = await listWords()
+    expect(word.english).toBe('mine')
   })
 
   /**

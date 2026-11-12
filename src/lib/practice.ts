@@ -8,10 +8,8 @@ import {
   cardKey,
 } from '@/content/items'
 
-import { GLOSSARY } from '@/content/glossary'
-import { LESSON_SETS } from '@/content/lessons'
-
 import { getDb, schema } from './db'
+import { buildLexicon } from './lexicon'
 import { type Lexicon, type Segment, segmentNote, segmentThai } from './segment'
 import { learnedWords, gateFor } from './unlock'
 import { listWordItems, listWords, loadNotes } from './words'
@@ -67,6 +65,14 @@ export interface DeckCard {
   thaiTokens: Segment[] | null
   /** Words named in the usage note, which already carries their readings. */
   noteTokens: Segment[] | null
+  /**
+   * Words in this sentence you have not studied yet, with their meanings.
+   *
+   * The gate lets a sentence through with a couple of these on purpose — a
+   * word met in use is learned better than the same word drilled alone — so
+   * the card has to say which words those are. Empty for word cards.
+   */
+  newWords: { thai: string; ipa: string; english: string }[]
 }
 
 export function parseSelection(params: {
@@ -155,62 +161,36 @@ function applyVocabRules(
   selection: Selection,
   progress: Map<string, SrsState>,
   vocabulary: WordRecord[],
-): PracticeItem[] {
+  lexicon: Lexicon,
+): { items: PracticeItem[]; newWords: Map<string, string[]> } {
   const hasVocab = items.some((item) => item.type === 'word')
-  if (!hasVocab) return items
+  if (!hasVocab) return { items, newWords: new Map() }
 
   const learned = learnedWords(vocabulary, progress)
 
-  return items.filter((item) => {
+  // Which words a sentence is carrying that you have not studied yet, so the
+  // card can point them out rather than leaving you to find them. A sentence
+  // is allowed through with a couple of these precisely so you meet the word
+  // in use — which only works if you can see which word it was.
+  const newWords = new Map<string, string[]>()
+
+  const kept = items.filter((item) => {
     if (item.type !== 'word') return true
     if (selection.kind && item.word.kind !== selection.kind) return false
     if (item.word.kind !== 'phrase') return true
-    return gateFor(item.word, vocabulary, learned).unlocked
-  })
-}
 
-/**
- * Everything a sentence might be split into, with what each word means.
- *
- * Three layers, in this order:
- *
- *  1. Your own cards, so tapping a word you have a card for says what your
- *     card says rather than offering a second opinion.
- *  2. The vocabulary that ships with the app.
- *  3. The shipped glossary — the particles, pronouns and place names that
- *     hold sentences together without ever having been worth a card.
- *
- * Two and three matter because they ship. Built from the database alone, a
- * deleted card would quietly stop a sentence being readable — and it would
- * stop being readable for every other word that shares it, with nothing on
- * screen to say why. The shipped layers alone can split every example the app
- * carries, so the deck can only improve the wording, never break the split.
- */
-export function buildLexicon(vocabulary: WordRecord[]): Lexicon {
-  const lexicon: Lexicon = new Map()
-
-  for (const word of vocabulary) {
-    if (word.kind !== 'word') continue
-    const thai = word.thai.trim()
-    if (!thai || lexicon.has(thai)) continue
-    lexicon.set(thai, { ipa: word.ipa ?? '', english: word.english })
-  }
-
-  for (const set of LESSON_SETS) {
-    for (const item of set.items) {
-      if ((item.kind ?? 'word') !== 'word') continue
-      const thai = item.thai.trim()
-      if (!thai || lexicon.has(thai)) continue
-      lexicon.set(thai, { ipa: item.ipa ?? '', english: item.english })
+    const gate = gateFor(item.word, vocabulary, learned, lexicon)
+    if (gate.unlocked && gate.blockedBy.length > 0) {
+      newWords.set(item.word.id, gate.blockedBy)
     }
-  }
+    return gate.unlocked
+  })
 
-  for (const [thai, entry] of Object.entries(GLOSSARY)) {
-    if (!lexicon.has(thai)) lexicon.set(thai, entry)
-  }
-
-  return lexicon
+  return { items: kept, newWords }
 }
+
+// Re-exported from its own module, where the phrase gate can reach it too.
+export { buildLexicon }
 
 /** Every card (item × direction) implied by a selection, with its schedule. */
 export async function loadDeck(selection: Selection, now: Date): Promise<DeckCard[]> {
@@ -221,11 +201,14 @@ export async function loadDeck(selection: Selection, now: Date): Promise<DeckCar
   ])
 
   const vocabulary = allItems.some((item) => item.type === 'word') ? await listWords() : []
-  const items = applyVocabRules(allItems, selection, progress, vocabulary)
 
   // Built once for the whole deck rather than per card: it is the same map
-  // every time, and a session can run to several hundred cards.
+  // every time, and a session can run to several hundred cards. Built before
+  // the gate runs, because whether a sentence can be looked up word by word
+  // is part of deciding whether to show it at all.
   const lexicon = buildLexicon(vocabulary)
+
+  const { items, newWords } = applyVocabRules(allItems, selection, progress, vocabulary, lexicon)
 
   return items.flatMap((item) =>
     selection.directions.map((direction): DeckCard => {
@@ -250,6 +233,9 @@ export async function loadDeck(selection: Selection, now: Date): Promise<DeckCar
           item.type === 'word' && item.word.context
             ? segmentNote(item.word.context, lexicon)
             : null,
+        newWords: (item.type === 'word' ? newWords.get(item.word.id) : undefined)?.map(
+          (thai) => ({ thai, ...(lexicon.get(thai) ?? { ipa: '', english: '' }) }),
+        ) ?? [],
       }
     }),
   )

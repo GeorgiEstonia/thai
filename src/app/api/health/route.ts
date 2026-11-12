@@ -5,7 +5,8 @@ import { ensureSchema, getDb, schema } from '@/lib/db'
 import { DESCRIBE_VERSION } from '@/lib/extract'
 import { loadProgress } from '@/lib/practice'
 import { bareThaiRuns } from '@/lib/romanised'
-import { learnedWords, partitionPhrases } from '@/lib/unlock'
+import { buildLexicon } from '@/lib/lexicon'
+import { gateFor, learnedWords, partitionPhrases } from '@/lib/unlock'
 import { listWords } from '@/lib/words'
 
 /**
@@ -120,10 +121,24 @@ async function contentAudit() {
   const noPack = words.filter((w) => !w.pack).length
   const staleVersion = words.filter((w) => (w.describeVersion ?? 0) < DESCRIBE_VERSION).length
 
-  // The phrase gate: why only one sentence ever shows up.
-  const { ready, locked } = partitionPhrases(words, progress)
+  // The phrase gate, which decides how many sentences you ever see.
+  const lexicon = buildLexicon(words)
+  const { ready, locked } = partitionPhrases(words, progress, lexicon)
   const blockedCounts = locked.map((entry) => entry.blockedBy.length)
   const learned = learnedWords(words, progress)
+
+  // Why each open sentence is open, and what it is carrying. "newWords" is
+  // the number of words you have never studied that an open sentence brings
+  // with it — the thing the gate trades against coverage.
+  const openGates = ready.map((phrase) => gateFor(phrase, words, learned, lexicon))
+  const newWordCounts = openGates.reduce<Record<string, number>>((acc, gate) => {
+    const key = String(gate.blockedBy.length)
+    acc[key] = (acc[key] ?? 0) + 1
+    return acc
+  }, {})
+  const unglossable = words.filter(
+    (w) => w.kind === 'phrase' && !gateFor(w, words, learned, lexicon).glossed,
+  ).length
 
   return {
     words: words.length,
@@ -150,6 +165,10 @@ async function contentAudit() {
         acc[key] = (acc[key] ?? 0) + 1
         return acc
       }, {}),
+      // Of the sentences now open, how many unstudied words each carries.
+      newWordsInOpen: newWordCounts,
+      // Sentences with no word-by-word gloss, which keep the strict gate.
+      unglossable,
     },
     study: {
       wordsRecalledOnce: learned.size,

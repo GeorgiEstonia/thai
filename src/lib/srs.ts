@@ -244,8 +244,23 @@ export interface SessionItem {
 }
 
 export interface BuildSessionOptions {
-  /** Cap on first-time items so an unlocking batch doesn't flood one sitting. */
+  /** Cap on first-time items per topic, so one topic can't fill a sitting. */
   maxNew?: number
+  /**
+   * Cap on first-time items in a given stage, across all topics.
+   *
+   * Separate from `maxNew` because it answers a different question. That one
+   * is about fairness between topics; this one is about how much new material
+   * a sitting can absorb at all. It matters for sentences in particular: a
+   * sentence may now arrive carrying two or three words you have never
+   * studied, so six new sentences is closer to fifteen new things than to
+   * six, and a difficulty stops being a useful one when there is too much of
+   * it to get right.
+   *
+   * Applied after interleaving, so what survives the cap is still spread
+   * across today's topics rather than taken all from the first one.
+   */
+  maxNewPerStage?: Record<number, number>
   /** Injectable for deterministic tests. */
   rng?: () => number
   /** Cards from one topic before moving to the next. */
@@ -259,6 +274,16 @@ export interface BuildSessionOptions {
  * still doing its work of putting related words beside each other.
  */
 export const INTERLEAVE_BLOCK = 6
+
+/**
+ * New sentences admitted to one sitting, across all of today's topics.
+ *
+ * Six. The number exists because the phrase gate was loosened: a sentence can
+ * now carry up to three words you have never studied, so six new sentences is
+ * already more new vocabulary than six new word cards would be. Reviews are
+ * not capped — this is about intake, not workload.
+ */
+export const MAX_NEW_SENTENCES = 6
 
 /**
  * Deals items out topic by topic, a block at a time.
@@ -323,7 +348,12 @@ export function buildSession(
   now: Date,
   options: BuildSessionOptions = {},
 ): SessionState {
-  const { maxNew = 8, rng = Math.random, blockSize = INTERLEAVE_BLOCK } = options
+  const {
+    maxNew = 8,
+    maxNewPerStage = {},
+    rng = Math.random,
+    blockSize = INTERLEAVE_BLOCK,
+  } = options
 
   const due = items.filter((item) => isDue(item.state, now))
 
@@ -342,11 +372,19 @@ export function buildSession(
       maxNew,
     )
 
+    // Dealt one card at a time before the cap bites, so a limit of six takes
+    // two from each of three topics rather than six from whichever topic the
+    // blocks happened to start with — then re-blocked for the queue itself.
+    const stageLimit = maxNewPerStage[stage] ?? Number.POSITIVE_INFINITY
+    const admitted = Number.isFinite(stageLimit)
+      ? interleave(interleave(fresh, 1, rng).slice(0, stageLimit), blockSize, rng)
+      : interleave(fresh, blockSize, rng)
+
     return [
       ...interleave(reviews, blockSize, rng).map(
         (item): SessionEntry => ({ id: item.id, kind: 'review' as const, reinforcement: false }),
       ),
-      ...interleave(fresh, blockSize, rng).map(
+      ...admitted.map(
         (item): SessionEntry => ({ id: item.id, kind: 'new' as const, reinforcement: false }),
       ),
     ]
